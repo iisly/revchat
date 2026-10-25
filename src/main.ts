@@ -441,12 +441,8 @@ class RevChatApp {
               <span class="badge ok" id="topbar-peer-badge">${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}</span>
             </div>
             <div class="topbar-actions">
-              <button class="small" id="btn-top-invite" title="Share Invite Link or QR">INVITE / QR</button>
-              <button class="small" id="btn-top-sdp" title="Serverless Manual WebRTC SDP">SDP</button>
               <button class="small" id="btn-toggle-search" title="Search Messages">FIND</button>
-              <button class="small desktop-only" id="btn-export-log" title="Export JSON Log">EXPORT</button>
-              <button class="small desktop-only" id="btn-clear-log" title="Clear Room History">CLEAR</button>
-              <button class="small" id="btn-help" title="Commands & Help">?</button>
+              <button class="small" id="btn-help" title="Commands & Help">HELP</button>
             </div>
           </header>
 
@@ -1150,24 +1146,17 @@ class RevChatApp {
       this.mobileDrawerOpen = false;
       this.openInviteModal();
     });
-    this.root.querySelector('#btn-top-invite')?.addEventListener('click', () => {
-      this.openInviteModal();
-    });
     this.root.querySelector('#btn-open-sdp')?.addEventListener('click', () => {
       this.mobileDrawerOpen = false;
       this.activeModal = 'manual-sdp';
       this.render();
-    });
-    this.root.querySelector('#btn-top-sdp')?.addEventListener('click', () => {
-      this.activeModal = 'manual-sdp';
-      this.renderModal();
     });
     this.root.querySelector('#btn-help')?.addEventListener('click', () => {
       this.activeModal = 'help';
       this.renderModal();
     });
 
-    // Search, Export, Clear
+    // Search
     this.root.querySelector('#btn-toggle-search')?.addEventListener('click', () => {
       this.searchOpen = !this.searchOpen;
       if (!this.searchOpen) this.searchQuery = '';
@@ -1184,17 +1173,6 @@ class RevChatApp {
     this.root.querySelector('#input-search')?.addEventListener('input', (e) => {
       this.searchQuery = (e.target as HTMLInputElement).value;
       this.appendOrRefreshMessages();
-    });
-
-    this.root.querySelector('#btn-export-log')?.addEventListener('click', () => {
-      this.exportRoomHistory();
-    });
-    this.root.querySelector('#btn-clear-log')?.addEventListener('click', () => {
-      this.messages = [];
-      this.messageIds.clear();
-      clearRoomMessages(this.roomId);
-      this.appendOrRefreshMessages();
-      this.showToast('Cleared local room history');
     });
 
     // Message Stream Scroll & Jump

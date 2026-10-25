@@ -514,6 +514,16 @@ export class P2PEngine {
   // =========================================================================
   // 3. MANUAL SERVERLESS WEBRTC SDP ENGINE (Zero-Server Offer/Answer)
   // =========================================================================
+  private getManualIceServers(): RTCIceServer[] {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return [];
+    }
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+  }
+
   public async createManualOffer(): Promise<string> {
     if (this.pendingManual) {
       try {
@@ -524,10 +534,7 @@ export class P2PEngine {
     }
 
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
+      iceServers: this.getManualIceServers(),
     });
 
     const dc = pc.createDataChannel('revchat', { ordered: true });
@@ -536,7 +543,7 @@ export class P2PEngine {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    await this.waitForIceGathering(pc, 2200);
+    await this.waitForIceGathering(pc, 1500);
 
     const tokenObj = {
       t: 'offer',
@@ -564,10 +571,7 @@ export class P2PEngine {
     }
 
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
+      iceServers: this.getManualIceServers(),
     });
 
     this.pendingManual = { pc };
@@ -578,7 +582,7 @@ export class P2PEngine {
     await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: decoded.sdp }));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    await this.waitForIceGathering(pc, 2200);
+    await this.waitForIceGathering(pc, 1500);
 
     const tokenObj = {
       t: 'answer',
