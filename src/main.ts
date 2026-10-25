@@ -25,6 +25,31 @@ const EIGHT_BALL_ANSWERS = [
   'Very doubtful.',
 ];
 
+interface SlashCommandDef {
+  cmd: string;
+  usage: string;
+  desc: string;
+  needsArgs: boolean;
+}
+
+const SLASH_COMMANDS: SlashCommandDef[] = [
+  { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
+  { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
+  { cmd: '/rps', usage: '/rps <r|p|s>', desc: 'Play Rock-Paper-Scissors', needsArgs: true },
+  { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
+  { cmd: '/pick', usage: '/pick a, b, c', desc: 'Randomly pick one option', needsArgs: true },
+  { cmd: '/shout', usage: '/shout <text>', desc: 'Send big bold announcement', needsArgs: true },
+  { cmd: '/flip', usage: '/flip [text]', desc: 'Flip table (╯°□°）╯︵ ┻━┻', needsArgs: false },
+  { cmd: '/unflip', usage: '/unflip [text]', desc: 'Put table back ┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
+  { cmd: '/shrug', usage: '/shrug [text]', desc: 'Append ¯\\_(ツ)_/¯', needsArgs: false },
+  { cmd: '/lenny', usage: '/lenny [text]', desc: 'Append ( ͡° ͜ʖ ͡°)', needsArgs: false },
+  { cmd: '/me', usage: '/me <action>', desc: 'Send an action message', needsArgs: true },
+  { cmd: '/nick', usage: '/nick <name>', desc: 'Change your nickname', needsArgs: true },
+  { cmd: '/room', usage: '/room <code>', desc: 'Switch to another room', needsArgs: true },
+  { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
+  { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
+];
+
 class RevChatApp {
   private root: HTMLElement;
   private profile: UserProfile;
@@ -47,6 +72,8 @@ class RevChatApp {
   private whisperTarget: { peerId: string; nickname: string } | undefined = undefined;
   private isAtBottom = true;
   private unreadWhileScrolled = 0;
+  private slashMenuIndex = 0;
+  private slashMenuDismissed = false;
 
   // Timers
   private lastTypingSentAt = 0;
@@ -404,7 +431,7 @@ class RevChatApp {
           <!-- Identity Section -->
           <div class="side-section">
             <div class="sec-title">
-              <span>Identity</span>
+              <span>Nickname</span>
               <span id="sig-label">${this.getSignalingBadgeText()}</span>
             </div>
             <div class="field-row">
@@ -438,7 +465,7 @@ class RevChatApp {
               <span>Connect Peers</span>
             </div>
             <div class="field-row">
-              <input type="text" id="input-direct-peer" placeholder="Peer Code (Join their room)" />
+              <input type="text" id="input-direct-peer" placeholder="Enter Peer Code" />
               <button id="btn-dial-peer">DIAL</button>
             </div>
             <div class="field-row" style="margin-top:6px;">
@@ -492,6 +519,8 @@ class RevChatApp {
           <button class="jump-bottom-btn" id="btn-jump-bottom" style="display:none;">
             ↓ Jump to latest
           </button>
+
+          <div id="slash-menu-container"></div>
 
           <div id="composer-context-container">
             ${this.renderContextBannerHtml()}
@@ -1069,6 +1098,10 @@ class RevChatApp {
 
     textarea?.addEventListener('input', () => {
       autoResize();
+      this.slashMenuDismissed = false;
+      this.slashMenuIndex = 0;
+      this.updateSlashMenuDOM(textarea.value);
+
       const now = Date.now();
       if (textarea.value.trim().length > 0) {
         if (now - this.lastTypingSentAt > 2000) {
@@ -1085,12 +1118,50 @@ class RevChatApp {
     });
 
     textarea?.addEventListener('keydown', (e) => {
+      const matches = this.getMatchingSlashCommands(textarea.value);
+      if (matches.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this.slashMenuIndex = (this.slashMenuIndex + 1) % matches.length;
+          this.updateSlashMenuDOM(textarea.value);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this.slashMenuIndex = (this.slashMenuIndex - 1 + matches.length) % matches.length;
+          this.updateSlashMenuDOM(textarea.value);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.slashMenuDismissed = true;
+          this.updateSlashMenuDOM(textarea.value);
+          return;
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const chosen = matches[this.slashMenuIndex] || matches[0];
+          this.applySlashCommandSelection(chosen, textarea, autoResize);
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          const chosen = matches[this.slashMenuIndex] || matches[0];
+          const typedCmd = textarea.value.trim().toLowerCase();
+          if (typedCmd !== chosen.cmd || chosen.needsArgs) {
+            e.preventDefault();
+            this.applySlashCommandSelection(chosen, textarea, autoResize);
+            return;
+          }
+        }
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (textarea.value.trim()) {
           const val = textarea.value;
           textarea.value = '';
           autoResize();
+          this.updateSlashMenuDOM('');
           this.handleSendMessage(val);
         }
       }
@@ -1102,6 +1173,7 @@ class RevChatApp {
         const val = textarea.value;
         textarea.value = '';
         autoResize();
+        this.updateSlashMenuDOM('');
         this.handleSendMessage(val);
         textarea.focus();
       }
@@ -1110,6 +1182,77 @@ class RevChatApp {
     this.bindPeerItemEvents();
     this.bindMessageStreamEvents();
     this.updateContextBannerDOM();
+  }
+
+  private getMatchingSlashCommands(rawInput: string): SlashCommandDef[] {
+    if (this.slashMenuDismissed) return [];
+    if (!rawInput.startsWith('/')) return [];
+    if (rawInput.includes(' ') || rawInput.includes('\n')) return [];
+    const prefix = rawInput.toLowerCase();
+    return SLASH_COMMANDS.filter((item) => item.cmd.startsWith(prefix));
+  }
+
+  private applySlashCommandSelection(
+    item: SlashCommandDef,
+    textarea: HTMLTextAreaElement,
+    autoResize: () => void
+  ): void {
+    textarea.value = `${item.cmd} `;
+    autoResize();
+    this.updateSlashMenuDOM(textarea.value);
+    textarea.focus();
+  }
+
+  private updateSlashMenuDOM(rawInput: string): void {
+    const container = this.root.querySelector('#slash-menu-container') as HTMLElement | null;
+    if (!container) return;
+
+    const matches = this.getMatchingSlashCommands(rawInput);
+    if (matches.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    if (this.slashMenuIndex >= matches.length) {
+      this.slashMenuIndex = 0;
+    }
+
+    container.innerHTML = `
+      <div class="slash-menu" id="slash-menu">
+        <div class="slash-menu-header">
+          <span>Slash Commands (${matches.length})</span>
+          <span>↑↓ Navigate • Tab/Enter Select</span>
+        </div>
+        ${matches
+          .map(
+            (item, idx) => `
+          <div class="slash-item ${idx === this.slashMenuIndex ? 'active' : ''}" data-slash-idx="${idx}">
+            <span class="slash-cmd">${this.escapeHtml(item.usage)}</span>
+            <span class="slash-desc">${this.escapeHtml(item.desc)}</span>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    `;
+
+    const activeEl = container.querySelector('.slash-item.active') as HTMLElement | null;
+    activeEl?.scrollIntoView({ block: 'nearest' });
+
+    const textarea = this.root.querySelector('#composer-input') as HTMLTextAreaElement | null;
+    container.querySelectorAll('[data-slash-idx]').forEach((el) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const idx = Number(el.getAttribute('data-slash-idx') || 0);
+        const chosen = matches[idx];
+        if (chosen && textarea) {
+          this.applySlashCommandSelection(chosen, textarea, () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${Math.min(120, textarea.scrollHeight)}px`;
+          });
+        }
+      });
+    });
   }
 
   private bindPeerItemEvents(): void {

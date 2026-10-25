@@ -484,6 +484,58 @@ button.small {
 }
 
 /* Composer Area */
+.slash-menu {
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-top: 1px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  flex-shrink: 0;
+  z-index: 25;
+}
+
+.slash-menu-header {
+  padding: 4px 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+}
+
+.slash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--bg-alt);
+}
+
+.slash-item:hover,
+.slash-item.active {
+  background: var(--accent-bg);
+}
+
+.slash-cmd {
+  font-weight: 700;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.slash-desc {
+  color: var(--fg-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-context {
   display: flex;
   align-items: center;
