@@ -1,15 +1,10 @@
 import { P2PEngine } from './p2p-engine';
 import { generateQrSvg } from './qrcode';
 import {
-  addRecentRoom,
-  clearRoomMessages,
   generateRoomCode,
   generateUUID,
-  loadRecentRooms,
-  loadRoomMessages,
   loadUserProfile,
   normalizeRoomId,
-  saveRoomMessages,
   saveUserProfile,
 } from './storage';
 import { ChatMessage, PeerInfo, SignalingState, UserProfile } from './types';
@@ -18,7 +13,6 @@ class RevChatApp {
   private root: HTMLElement;
   private profile: UserProfile;
   private roomId: string;
-  private recentRooms: string[];
   private engine!: P2PEngine;
 
   private signalingState: SignalingState;
@@ -56,9 +50,8 @@ class RevChatApp {
     this.profile = loadUserProfile();
     this.applyTheme();
 
-    const initialRoom = this.parseRoomFromUrl() || loadRecentRooms()[0] || 'LOBBY';
+    const initialRoom = this.parseRoomFromUrl() || 'LOBBY';
     this.roomId = normalizeRoomId(initialRoom);
-    this.recentRooms = addRecentRoom(this.roomId);
     this.syncUrlWithRoom(this.roomId);
 
     this.signalingState = {
@@ -68,7 +61,6 @@ class RevChatApp {
       isBeaconHost: false,
     };
 
-    this.loadMessagesForRoom(this.roomId);
     this.setupVisualViewportFix();
     this.render();
     this.initEngine();
@@ -131,12 +123,6 @@ class RevChatApp {
     document.documentElement.setAttribute('data-theme', effective);
   }
 
-  private loadMessagesForRoom(roomId: string): void {
-    const stored = loadRoomMessages(roomId);
-    this.messages = stored;
-    this.messageIds = new Set(stored.map((m) => m.id));
-  }
-
   private initEngine(): void {
     this.engine = new P2PEngine(this.profile, this.roomId, {
       onSignalingChange: (state) => {
@@ -163,7 +149,6 @@ class RevChatApp {
         if (isHistorySync) {
           this.messages.sort((a, b) => a.timestamp - b.timestamp);
         }
-        saveRoomMessages(this.roomId, this.messages);
 
         if (!isHistorySync && msg.senderId !== this.signalingState.myPeerId) {
           this.playNotificationTick();
@@ -174,7 +159,6 @@ class RevChatApp {
         const target = this.messages.find((m) => m.id === messageId);
         if (target && !target.ackedBy.includes(ackPeerId)) {
           target.ackedBy.push(ackPeerId);
-          saveRoomMessages(this.roomId, this.messages);
           const ackEl = this.root.querySelector(`[data-ack-id="${messageId}"]`);
           if (ackEl) {
             ackEl.textContent = `✓✓ ${target.ackedBy.length}`;
@@ -251,12 +235,12 @@ class RevChatApp {
       return;
     }
     this.roomId = normalized;
-    this.recentRooms = addRecentRoom(this.roomId);
     this.syncUrlWithRoom(this.roomId);
     this.replyTo = undefined;
     this.whisperTarget = undefined;
     this.mobileDrawerOpen = false;
-    this.loadMessagesForRoom(this.roomId);
+    this.messages = [];
+    this.messageIds.clear();
     this.engine.switchRoom(this.roomId);
     this.render();
     this.scrollToBottom();
@@ -280,9 +264,8 @@ class RevChatApp {
       if (cmd === '/clear') {
         this.messages = [];
         this.messageIds.clear();
-        clearRoomMessages(this.roomId);
         this.appendOrRefreshMessages();
-        this.showToast('Cleared local room history');
+        this.showToast('Cleared chat view');
         return;
       }
       if (cmd === '/nick' && argStr) {
@@ -315,7 +298,6 @@ class RevChatApp {
     const msg = this.engine.sendChatMessage(text, this.replyTo, this.whisperTarget);
     this.messageIds.add(msg.id);
     this.messages.push(msg);
-    saveRoomMessages(this.roomId, this.messages);
 
     this.replyTo = undefined;
     this.engine.sendTyping(false);
@@ -346,7 +328,7 @@ class RevChatApp {
   public render(): void {
     this.root.innerHTML = `
       <div class="layout">
-        ${this. mobileDrawerOpen ? `<div class="drawer-backdrop" id="drawer-backdrop"></div>` : ''}
+        ${this.mobileDrawerOpen ? `<div class="drawer-backdrop" id="drawer-backdrop"></div>` : ''}
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
             <div class="brand">
@@ -392,14 +374,6 @@ class RevChatApp {
             <div class="field-row">
               <input type="text" id="input-room" value="${this.escapeAttr(this.roomId)}" maxlength="32" placeholder="ROOM-CODE" />
               <button class="primary" id="btn-join-room">JOIN</button>
-            </div>
-            <div class="chip-list" id="recent-rooms-list">
-              ${this.recentRooms
-                .map(
-                  (r) =>
-                    `<span class="chip ${r === this.roomId ? 'active' : ''}" data-room="${this.escapeAttr(r)}">#${this.escapeHtml(r)}</span>`
-                )
-                .join('')}
             </div>
           </div>
 
@@ -552,8 +526,8 @@ class RevChatApp {
           <h3>#${this.escapeHtml(this.roomId)} — P2P Channel Ready</h3>
           <ul>
             <li><b>Same Browser:</b> Open this URL in a second tab for instant local P2P chat.</li>
-            <li><b>Mobile / Remote:</b> Tap <b>INVITE / QR</b> to scan QR code or share room link.</li>
-            <li><b>Zero-Server Mode:</b> Tap <b>SDP</b> to exchange WebRTC Offer/Answer tokens directly.</li>
+            <li><b>Mobile / Remote:</b> Tap <b>QR / INVITE LINK</b> to scan QR code or share room link.</li>
+            <li><b>Zero-Server Mode:</b> Tap <b>MANUAL SDP</b> to exchange WebRTC Offer/Answer tokens directly.</li>
             <li><b>Slash Commands:</b> <code>/nick name</code>, <code>/room code</code>, <code>/clear</code>, <code>/help</code></li>
           </ul>
         </div>
@@ -997,7 +971,7 @@ class RevChatApp {
                   <div><code>/room &lt;code&gt;</code> — Switch to or create a room</div>
                   <div><code>/me &lt;action&gt;</code> — Send an action message</div>
                   <div><code>/shrug</code> — Append ¯\\_(ツ)_/¯</div>
-                  <div><code>/clear</code> — Clear local history for current room</div>
+                  <div><code>/clear</code> — Clear current chat view</div>
                   <div><code>/help</code> — Show this dialog</div>
                 </div>
               </div>
@@ -1026,7 +1000,6 @@ class RevChatApp {
       modalRoot.querySelector('#btn-modal-clear')?.addEventListener('click', () => {
         this.messages = [];
         this.messageIds.clear();
-        clearRoomMessages(this.roomId);
         this.appendOrRefreshMessages();
         this.activeModal = 'none';
         this.renderModal();
@@ -1093,7 +1066,7 @@ class RevChatApp {
       this.showToast('Peer code copied!');
     });
 
-    // Room Join / Random / Chips
+    // Room Join / Random
     const joinRoomFromInput = () => {
       const input = this.root.querySelector('#input-room') as HTMLInputElement | null;
       if (input && input.value.trim()) {
@@ -1109,13 +1082,6 @@ class RevChatApp {
     });
     this.root.querySelector('#btn-new-room')?.addEventListener('click', () => {
       this.switchRoom(generateRoomCode());
-    });
-
-    this.root.querySelectorAll('[data-room]').forEach((el) => {
-      el.addEventListener('click', () => {
-        const r = el.getAttribute('data-room');
-        if (r) this.switchRoom(r);
-      });
     });
 
     // Direct Peer Dial
@@ -1308,4 +1274,3 @@ const appRoot = document.getElementById('app');
 if (appRoot) {
   new RevChatApp(appRoot);
 }
-

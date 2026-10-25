@@ -1,9 +1,8 @@
-import { ChatMessage, UserProfile } from './types';
+import { UserProfile } from './types';
 
 const PROFILE_KEY = 'revchat_profile_v1';
-const RECENT_ROOMS_KEY = 'revchat_recent_rooms_v1';
-const MESSAGES_PREFIX = 'revchat_msgs_v1_';
-const MAX_STORED_MESSAGES_PER_ROOM = 200;
+const LEGACY_RECENT_ROOMS_KEY = 'revchat_recent_rooms_v1';
+const LEGACY_MESSAGES_PREFIX = 'revchat_msgs_v1_';
 
 function randomId(len = 6): string {
   const chars = '23456789abcdefghjkmnpqrstuvwxyz';
@@ -38,7 +37,26 @@ export function normalizeRoomId(input: string): string {
   return cleaned.slice(0, 32) || 'LOBBY';
 }
 
+export function purgeLegacyRoomStorage(): void {
+  try {
+    localStorage.removeItem(LEGACY_RECENT_ROOMS_KEY);
+    const keysToDelete: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(LEGACY_MESSAGES_PREFIX)) {
+        keysToDelete.push(k);
+      }
+    }
+    for (const k of keysToDelete) {
+      localStorage.removeItem(k);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function loadUserProfile(): UserProfile {
+  purgeLegacyRoomStorage();
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (raw) {
@@ -76,66 +94,3 @@ export function saveUserProfile(profile: UserProfile): void {
     // ignore
   }
 }
-
-export function loadRecentRooms(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_ROOMS_KEY);
-    if (raw) {
-      const list = JSON.parse(raw);
-      if (Array.isArray(list)) {
-        return list.filter((x) => typeof x === 'string').slice(0, 10);
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return ['LOBBY'];
-}
-
-export function addRecentRoom(roomId: string): string[] {
-  const normalized = normalizeRoomId(roomId);
-  const current = loadRecentRooms().filter((r) => r !== normalized);
-  const updated = [normalized, ...current].slice(0, 10);
-  try {
-    localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(updated));
-  } catch {
-    // ignore
-  }
-  return updated;
-}
-
-export function loadRoomMessages(roomId: string): ChatMessage[] {
-  const key = MESSAGES_PREFIX + normalizeRoomId(roomId);
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return [];
-}
-
-export function saveRoomMessages(roomId: string, messages: ChatMessage[]): void {
-  const key = MESSAGES_PREFIX + normalizeRoomId(roomId);
-  try {
-    const trimmed = messages.slice(-MAX_STORED_MESSAGES_PER_ROOM);
-    localStorage.setItem(key, JSON.stringify(trimmed));
-  } catch {
-    // ignore
-  }
-}
-
-export function clearRoomMessages(roomId: string): void {
-  const key = MESSAGES_PREFIX + normalizeRoomId(roomId);
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
-}
-
