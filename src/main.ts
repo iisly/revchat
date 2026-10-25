@@ -527,19 +527,8 @@ class RevChatApp {
             </div>
           </div>
 
-          <!-- Room Members List -->
-          <div class="side-section" style="flex:1;overflow-y:auto;">
-            <div class="sec-title">
-              <span>Members (<span id="peer-count-side">${this.peers.length}</span>)</span>
-              <span class="badge" id="room-mode-badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
-            </div>
-            <div class="peer-list" id="peer-list-container">
-              ${this.renderPeersListHtml()}
-            </div>
-          </div>
-
           <!-- P2P Connect Tools -->
-          <div class="side-section" style="border-bottom:none;">
+          <div class="side-section">
             <div class="sec-title">
               <span>Follow Peer</span>
             </div>
@@ -549,6 +538,17 @@ class RevChatApp {
             </div>
             <div class="field-row" style="margin-top:6px;">
               <button style="width:100%" id="btn-open-invite">QR / INVITE LINK</button>
+            </div>
+          </div>
+
+          <!-- Room Members List -->
+          <div class="side-section" style="flex:1;border-bottom:none;overflow-y:auto;">
+            <div class="sec-title">
+              <span>Members (<span id="peer-count-side">${this.peers.length}</span>)</span>
+              <span class="badge" id="room-mode-badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
+            </div>
+            <div class="peer-list" id="peer-list-container">
+              ${this.renderPeersListHtml()}
             </div>
           </div>
 
