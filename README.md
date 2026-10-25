@@ -14,13 +14,13 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
 | :--- | :--- |
 | `/roll [max]` | Roll a dice (default `1-100`) |
 | `/coin` | Flip a coin (`HEADS` / `TAILS`) |
-| `/rps <r\|p\|s>` | Play Rock-Paper-Scissors |
+| `/rps [r\|p\|s]` | Throw Rock, Paper, or Scissors (random if omitted) |
 | `/8ball <question>` | Ask the Magic 8-Ball |
-| `/pick a, b, c` | Randomly pick one option |
+| `/pick <a, b, ...>` | Randomly pick one from any number of options |
 | `/shout <text>` | Send big bold announcement |
 | `/flip` / `/unflip` | Table flip / put table back |
 | `/shrug` / `/lenny` | Append classic ASCII emotes |
 | `/me <action>` | Send an action message |
 | `/nick <name>` | Change your nickname |
-| `/room <code>` | Switch to another room |
+| `/room [code]` | Switch room (or random room if omitted) |
 | `/clear` | Clear local chat screen |

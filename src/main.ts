@@ -9,7 +9,7 @@ import {
 } from './storage';
 import { ChatMessage, PeerInfo, SignalingState, UserProfile } from './types';
 
-const MAX_MEMORY_MESSAGES = 200;
+const MAX_MEMORY_MESSAGES = 1000;
 
 const EIGHT_BALL_ANSWERS = [
   'It is certain.',
@@ -35,9 +35,9 @@ interface SlashCommandDef {
 const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
   { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
-  { cmd: '/rps', usage: '/rps <r|p|s>', desc: 'Play Rock-Paper-Scissors', needsArgs: true },
+  { cmd: '/rps', usage: '/rps [r|p|s]', desc: 'Throw Rock, Paper, or Scissors (random if omitted)', needsArgs: false },
   { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
-  { cmd: '/pick', usage: '/pick a, b, c', desc: 'Randomly pick one option', needsArgs: true },
+  { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from multiple options', needsArgs: true },
   { cmd: '/shout', usage: '/shout <text>', desc: 'Send big bold announcement', needsArgs: true },
   { cmd: '/flip', usage: '/flip [text]', desc: 'Flip table (╯°□°）╯︵ ┻━┻', needsArgs: false },
   { cmd: '/unflip', usage: '/unflip [text]', desc: 'Put table back ┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
@@ -45,7 +45,7 @@ const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/lenny', usage: '/lenny [text]', desc: 'Append ( ͡° ͜ʖ ͡°)', needsArgs: false },
   { cmd: '/me', usage: '/me <action>', desc: 'Send an action message', needsArgs: true },
   { cmd: '/nick', usage: '/nick <name>', desc: 'Change your nickname', needsArgs: true },
-  { cmd: '/room', usage: '/room <code>', desc: 'Switch to another room', needsArgs: true },
+  { cmd: '/room', usage: '/room [code]', desc: 'Switch room (or random room if omitted)', needsArgs: false },
   { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
   { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
 ];
@@ -170,16 +170,20 @@ class RevChatApp {
     document.documentElement.setAttribute('data-theme', effective);
   }
 
-  private pushMessageToMemory(msg: ChatMessage): void {
-    if (this.messageIds.has(msg.id)) return;
+  private pushMessageToMemory(msg: ChatMessage): boolean {
+    if (this.messageIds.has(msg.id)) return false;
     this.messageIds.add(msg.id);
+    let evicted = false;
     this.messages.push(msg);
     if (this.messages.length > MAX_MEMORY_MESSAGES) {
       const removed = this.messages.shift();
       if (removed) {
         this.messageIds.delete(removed.id);
+        evicted = true;
       }
     }
+    this.appendSingleMessageDOM(msg, evicted);
+    return true;
   }
 
   private initEngine(): void {
@@ -202,7 +206,6 @@ class RevChatApp {
       },
       onChatMessage: (msg) => {
         this.pushMessageToMemory(msg);
-        this.appendOrRefreshMessages();
       },
       onMessageAck: (messageId, ackPeerId) => {
         const target = this.messages.find((m) => m.id === messageId);
@@ -230,7 +233,6 @@ class RevChatApp {
           ackedBy: [],
         };
         this.pushMessageToMemory(sysMsg);
-        this.appendOrRefreshMessages();
       },
       onRoomFollowed: (newRoomId, peerNickname) => {
         this.roomId = newRoomId;
@@ -340,7 +342,17 @@ class RevChatApp {
       }
       case '/rps': {
         const hands = ['✊ ROCK', '✋ PAPER', '✌️ SCISSORS'];
-        const pick = hands[Math.floor(Math.random() * hands.length)];
+        const choice = argStr.toLowerCase();
+        let pick: string;
+        if (choice === 'r' || choice === 'rock') {
+          pick = hands[0];
+        } else if (choice === 'p' || choice === 'paper') {
+          pick = hands[1];
+        } else if (choice === 's' || choice === 'scissors') {
+          pick = hands[2];
+        } else {
+          pick = hands[Math.floor(Math.random() * hands.length)];
+        }
         this.dispatchUserChat(`${nick} threw ${pick}!`);
         return true;
       }
@@ -403,7 +415,6 @@ class RevChatApp {
     this.replyTo = undefined;
     this.engine.sendTyping(false);
     this.updateContextBannerDOM();
-    this.appendOrRefreshMessages();
     this.scrollToBottom();
   }
 
@@ -611,78 +622,78 @@ class RevChatApp {
       `;
     }
 
-    return filtered
-      .map((m) => {
-        const timeStr = new Date(m.timestamp).toLocaleTimeString([], {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        });
+    return filtered.map((m) => this.renderSingleMessageHtml(m)).join('');
+  }
 
-        if (m.system) {
-          return `
-            <div class="msg-row system">
-              [${timeStr}] * ${this.escapeHtml(m.text)}
-            </div>
-          `;
-        }
+  private renderSingleMessageHtml(m: ChatMessage): string {
+    const timeStr = new Date(m.timestamp).toLocaleTimeString([], {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
 
-        const isSelf =
-          m.senderId === this.signalingState.myPeerId ||
-          m.senderId.startsWith(`revchat-p-${this.profile.clientId.toLowerCase()}`);
+    if (m.system) {
+      return `
+        <div class="msg-row system">
+          [${timeStr}] * ${this.escapeHtml(m.text)}
+        </div>
+      `;
+    }
 
-        const whisperTag = m.targetPeerId
-          ? `<span class="badge">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</span> `
-          : '';
+    const isSelf =
+      m.senderId === this.signalingState.myPeerId ||
+      m.senderId.startsWith(`revchat-p-${this.profile.clientId.toLowerCase()}`);
 
-        const ackText = isSelf
-          ? m.ackedBy.length > 0
-            ? `✓✓ ${m.ackedBy.length}`
-            : '✓'
-          : '';
+    const whisperTag = m.targetPeerId
+      ? `<span class="badge">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</span> `
+      : '';
 
-        return `
-          <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''}">
-            <div class="msg-header">
-              <div>
-                <span class="msg-author ${isSelf ? 'self' : ''}">${this.escapeHtml(m.senderName)}</span>
-                ${whisperTag}
-                <span class="msg-time">${timeStr}</span>
-              </div>
-              <div class="msg-meta-right">
-                ${
-                  isSelf
-                    ? `<span class="msg-ack" data-ack-id="${this.escapeAttr(m.id)}">${ackText}</span>`
-                    : ''
-                }
-                <button
-                  class="small msg-reply-btn"
-                  data-copy-id="${this.escapeAttr(m.id)}"
-                  title="Copy message"
-                >
-                  copy
-                </button>
-                <button
-                  class="small msg-reply-btn"
-                  data-reply-id="${this.escapeAttr(m.id)}"
-                  data-reply-sender="${this.escapeAttr(m.senderName)}"
-                  data-reply-text="${this.escapeAttr(m.text.slice(0, 80))}"
-                >
-                  reply
-                </button>
-              </div>
-            </div>
+    const ackText = isSelf
+      ? m.ackedBy.length > 0
+        ? `✓✓ ${m.ackedBy.length}`
+        : '✓'
+      : '';
+
+    return `
+      <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''}">
+        <div class="msg-header">
+          <div>
+            <span class="msg-author ${isSelf ? 'self' : ''}">${this.escapeHtml(m.senderName)}</span>
+            ${whisperTag}
+            <span class="msg-time">${timeStr}</span>
+          </div>
+          <div class="msg-meta-right">
             ${
-              m.replyTo
-                ? `<div class="msg-quote">@${this.escapeHtml(m.replyTo.senderName)}: ${this.escapeHtml(m.replyTo.text)}</div>`
+              isSelf
+                ? `<span class="msg-ack" data-ack-id="${this.escapeAttr(m.id)}">${ackText}</span>`
                 : ''
             }
-            <div class="msg-body">${this.formatMessageBody(m.text)}</div>
+            <button
+              class="small msg-reply-btn"
+              data-copy-id="${this.escapeAttr(m.id)}"
+              title="Copy message"
+            >
+              copy
+            </button>
+            <button
+              class="small msg-reply-btn"
+              data-reply-id="${this.escapeAttr(m.id)}"
+              data-reply-sender="${this.escapeAttr(m.senderName)}"
+              data-reply-text="${this.escapeAttr(m.text.slice(0, 80))}"
+            >
+              reply
+            </button>
           </div>
-        `;
-      })
-      .join('');
+        </div>
+        ${
+          m.replyTo
+            ? `<div class="msg-quote">@${this.escapeHtml(m.replyTo.senderName)}: ${this.escapeHtml(m.replyTo.text)}</div>`
+            : ''
+        }
+        <div class="msg-body">${this.formatMessageBody(m.text)}</div>
+      </div>
+    `;
   }
 
   private renderContextBannerHtml(): string {
@@ -738,7 +749,6 @@ class RevChatApp {
     const listEl = this.root.querySelector('#peer-list-container');
     if (listEl) {
       listEl.innerHTML = this.renderPeersListHtml();
-      this.bindPeerItemEvents();
     }
     const sideCount = this.root.querySelector('#peer-count-side');
     if (sideCount) sideCount.textContent = String(this.peers.length);
@@ -773,6 +783,31 @@ class RevChatApp {
     }
   }
 
+  private appendSingleMessageDOM(msg: ChatMessage, evicted: boolean): void {
+    if (this.searchQuery.trim()) {
+      this.appendOrRefreshMessages();
+      return;
+    }
+    const stream = this.root.querySelector('#message-stream') as HTMLElement | null;
+    if (!stream) return;
+
+    const wasAtBottom =
+      stream.scrollHeight - stream.scrollTop - stream.clientHeight < 65;
+
+    stream.querySelector('.empty-state')?.remove();
+    if (evicted) {
+      stream.querySelector('.msg-row')?.remove();
+    }
+    stream.insertAdjacentHTML('beforeend', this.renderSingleMessageHtml(msg));
+
+    if (wasAtBottom) {
+      this.scrollToBottom();
+    } else {
+      this.unreadWhileScrolled++;
+      this.updateJumpButtonDOM();
+    }
+  }
+
   private appendOrRefreshMessages(): void {
     const stream = this.root.querySelector('#message-stream') as HTMLElement | null;
     if (!stream) return;
@@ -780,7 +815,6 @@ class RevChatApp {
     const wasAtBottom =
       stream.scrollHeight - stream.scrollTop - stream.clientHeight < 65;
     stream.innerHTML = this.renderMessagesHtml();
-    this.bindMessageStreamEvents();
 
     if (wasAtBottom) {
       this.scrollToBottom();
@@ -922,9 +956,9 @@ class RevChatApp {
                   <div><code>/room [code]</code> — Switch room (or random room if empty)</div>
                   <div><code>/roll [max]</code> — Roll a dice (default 1–100)</div>
                   <div><code>/coin</code> — Flip a coin (HEADS / TAILS)</div>
-                  <div><code>/rps</code> — Throw Rock / Paper / Scissors</div>
+                  <div><code>/rps [r|p|s]</code> — Throw Rock / Paper / Scissors (or random)</div>
                   <div><code>/8ball &lt;q&gt;</code> — Ask the Magic 8-Ball a question</div>
-                  <div><code>/pick a, b, c</code> — Randomly pick one item from a list</div>
+                  <div><code>/pick &lt;a, b, ...&gt;</code> — Randomly pick one item from any number of options</div>
                   <div><code>/shout &lt;msg&gt;</code> — Send a loud uppercase announcement</div>
                   <div><code>/me &lt;action&gt;</code> — Send an action status message</div>
                   <div><code>/shrug</code> <code>/flip</code> <code>/unflip</code> <code>/lenny</code> — ASCII emotes</div>
@@ -1263,44 +1297,50 @@ class RevChatApp {
   }
 
   private bindPeerItemEvents(): void {
-    this.root.querySelectorAll('[data-whisper-id]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const peerId = btn.getAttribute('data-whisper-id') || '';
-        const nickname = btn.getAttribute('data-whisper-name') || 'peer';
-        if (this.whisperTarget?.peerId === peerId) {
-          this.whisperTarget = undefined;
-        } else {
-          this.whisperTarget = { peerId, nickname };
-        }
-        this.mobileDrawerOpen = false;
-        this.updatePeersDOM();
-        this.updateContextBannerDOM();
-        (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
-      });
+    const peerContainer = this.root.querySelector('#peer-list-container');
+    peerContainer?.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement | null)?.closest('[data-whisper-id]');
+      if (!btn) return;
+      const peerId = btn.getAttribute('data-whisper-id') || '';
+      const nickname = btn.getAttribute('data-whisper-name') || 'peer';
+      if (this.whisperTarget?.peerId === peerId) {
+        this.whisperTarget = undefined;
+      } else {
+        this.whisperTarget = { peerId, nickname };
+      }
+      this.mobileDrawerOpen = false;
+      this.updatePeersDOM();
+      this.updateContextBannerDOM();
+      (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
     });
   }
 
   private bindMessageStreamEvents(): void {
-    this.root.querySelectorAll('[data-copy-id]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-copy-id') || '';
+    const stream = this.root.querySelector('#message-stream');
+    stream?.addEventListener('click', (e) => {
+      const targetEl = e.target as HTMLElement | null;
+      if (!targetEl) return;
+
+      const copyBtn = targetEl.closest('[data-copy-id]');
+      if (copyBtn) {
+        const id = copyBtn.getAttribute('data-copy-id') || '';
         const target = this.messages.find((m) => m.id === id);
         if (target) {
           navigator.clipboard?.writeText(target.text);
           this.showToast('Message copied!');
         }
-      });
-    });
+        return;
+      }
 
-    this.root.querySelectorAll('[data-reply-id]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-reply-id') || '';
-        const senderName = btn.getAttribute('data-reply-sender') || '';
-        const text = btn.getAttribute('data-reply-text') || '';
+      const replyBtn = targetEl.closest('[data-reply-id]');
+      if (replyBtn) {
+        const id = replyBtn.getAttribute('data-reply-id') || '';
+        const senderName = replyBtn.getAttribute('data-reply-sender') || '';
+        const text = replyBtn.getAttribute('data-reply-text') || '';
         this.replyTo = { id, senderName, text };
         this.updateContextBannerDOM();
         (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
-      });
+      }
     });
   }
 
