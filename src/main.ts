@@ -90,7 +90,7 @@ class RevChatApp {
   private signalingState: SignalingState;
   private peers: PeerInfo[] = [];
   private messages: ChatMessage[] = [];
-  private messageIds = new Set<string>();
+  private messageMap = new Map<string, ChatMessage>();
   private typingPeers: { peerId: string; nickname: string }[] = [];
 
   // UI state
@@ -142,6 +142,11 @@ class RevChatApp {
     };
     window.addEventListener('pagehide', cleanup);
     window.addEventListener('beforeunload', cleanup);
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) {
+        window.location.reload();
+      }
+    });
   }
 
   private parseRoomFromUrl(): string | null {
@@ -204,14 +209,14 @@ class RevChatApp {
   }
 
   private pushMessageToMemory(msg: ChatMessage): boolean {
-    if (this.messageIds.has(msg.id)) return false;
-    this.messageIds.add(msg.id);
+    if (this.messageMap.has(msg.id)) return false;
+    this.messageMap.set(msg.id, msg);
     let evicted = false;
     this.messages.push(msg);
     if (this.messages.length > MAX_MEMORY_MESSAGES) {
       const removed = this.messages.shift();
       if (removed) {
-        this.messageIds.delete(removed.id);
+        this.messageMap.delete(removed.id);
         evicted = true;
       }
     }
@@ -233,7 +238,7 @@ class RevChatApp {
         this.pushMessageToMemory(msg);
       },
       onMessageAck: (messageId, ackPeerId) => {
-        const target = this.messages.find((m) => m.id === messageId);
+        const target = this.messageMap.get(messageId);
         if (target && !target.ackedBy.includes(ackPeerId)) {
           target.ackedBy.push(ackPeerId);
           const ackEl = this.root.querySelector(`[data-ack-id="${messageId}"]`);
@@ -266,13 +271,23 @@ class RevChatApp {
         this.whisperTarget = undefined;
         this.mobileDrawerOpen = false;
         this.messages = [];
-        this.messageIds.clear();
+        this.messageMap.clear();
         this.render();
         this.showToast(`Joined ${peerNickname} in #${newRoomId}`);
       },
     });
 
     this.engine.start();
+  }
+
+  private setMobileDrawerOpen(open: boolean): void {
+    this.mobileDrawerOpen = open;
+    const sidebar = this.root.querySelector('#sidebar');
+    sidebar?.classList.toggle('open', open);
+    const backdrop = this.root.querySelector('#drawer-backdrop') as HTMLElement | null;
+    if (backdrop) {
+      backdrop.style.display = open ? 'block' : 'none';
+    }
   }
 
   private showToast(text: string): void {
@@ -292,8 +307,7 @@ class RevChatApp {
   private switchRoom(targetRoom: string): void {
     const normalized = normalizeRoomId(targetRoom);
     if (normalized === this.roomId) {
-      this.mobileDrawerOpen = false;
-      this.render();
+      this.setMobileDrawerOpen(false);
       return;
     }
     this.roomId = normalized;
@@ -302,7 +316,7 @@ class RevChatApp {
     this.whisperTarget = undefined;
     this.mobileDrawerOpen = false;
     this.messages = [];
-    this.messageIds.clear();
+    this.messageMap.clear();
     this.engine.switchRoom(this.roomId);
     this.render();
     this.scrollToBottom();
@@ -357,7 +371,7 @@ class RevChatApp {
       }
       case '/clear': {
         this.messages = [];
-        this.messageIds.clear();
+        this.messageMap.clear();
         this.appendOrRefreshMessages();
         this.showToast('Cleared chat view');
         return true;
@@ -370,7 +384,8 @@ class RevChatApp {
         }
         this.profile.nickname = cleanNick;
         this.engine.updateProfile(this.profile);
-        this.render();
+        const nickInput = this.root.querySelector('#input-nick') as HTMLInputElement | null;
+        if (nickInput) nickInput.value = this.profile.nickname;
         this.showToast(`Nickname set to ${this.profile.nickname}`);
         return true;
       }
@@ -489,7 +504,7 @@ class RevChatApp {
 
     this.root.innerHTML = `
       <div class="layout">
-        ${this.mobileDrawerOpen ? `<div class="drawer-backdrop" id="drawer-backdrop"></div>` : ''}
+        <div class="drawer-backdrop" id="drawer-backdrop" style="display:${this.mobileDrawerOpen ? 'block' : 'none'};"></div>
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
             <div class="brand" id="brand-logo" title="Reload revchat">
@@ -534,13 +549,11 @@ class RevChatApp {
           <div class="side-section">
             <div class="sec-title">
               <span>Follow Peer</span>
+              <button class="small" id="btn-open-invite">QR/LINK</button>
             </div>
             <div class="field-row">
               <input type="text" id="input-direct-peer" placeholder="Peer Code" />
               <button id="btn-dial-peer">FOLLOW</button>
-            </div>
-            <div class="field-row" style="margin-top:6px;">
-              <button style="width:100%" id="btn-open-invite">QR / INVITE LINK</button>
             </div>
           </div>
 
@@ -673,7 +686,7 @@ class RevChatApp {
         <div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);padding:8px 0;">
           No remote peers connected yet.<br/>
           • Open another tab to test instant local mesh<br/>
-          • Or share <b>QR / Invite Link</b> with mobile/desktop
+          • Or share <b>QR/LINK</b> with mobile/desktop
         </div>
       `;
     }
@@ -723,7 +736,7 @@ class RevChatApp {
           <h3>#${this.escapeHtml(this.roomId)} — P2P Channel Ready</h3>
           <ul>
             <li><b>Same Browser:</b> Open this URL in a second tab for instant local P2P chat.</li>
-            <li><b>Mobile / Remote:</b> Tap <b>QR / INVITE LINK</b> to scan QR code or share room link.</li>
+            <li><b>Mobile / Remote:</b> Tap <b>QR/LINK</b> to scan QR code or share room link.</li>
             <li><b>Follow Peer:</b> Enter a friend's Peer Code in <b>FOLLOW</b> to jump into their room.</li>
             <li><b>Commands:</b> <code>/roll</code>, <code>/coin</code>, <code>/rps</code>, <code>/8ball</code>, <code>/pick</code>, <code>/help</code></li>
           </ul>
@@ -1107,16 +1120,13 @@ class RevChatApp {
       window.location.reload();
     });
     this.root.querySelector('#btn-open-drawer')?.addEventListener('click', () => {
-      this.mobileDrawerOpen = true;
-      this.render();
+      this.setMobileDrawerOpen(true);
     });
     this.root.querySelector('#btn-close-drawer')?.addEventListener('click', () => {
-      this.mobileDrawerOpen = false;
-      this.render();
+      this.setMobileDrawerOpen(false);
     });
     this.root.querySelector('#drawer-backdrop')?.addEventListener('click', () => {
-      this.mobileDrawerOpen = false;
-      this.render();
+      this.setMobileDrawerOpen(false);
     });
 
     // Font Size Direct Buttons & Theme
@@ -1191,8 +1201,7 @@ class RevChatApp {
       const ok = this.engine.connectToDirectPeer(val, true);
       if (ok) {
         if (input) input.value = '';
-        this.mobileDrawerOpen = false;
-        this.render();
+        this.setMobileDrawerOpen(false);
         this.showToast(`Following ${val} into their room...`);
       } else {
         this.showToast('Could not follow peer (check code)');
@@ -1208,14 +1217,11 @@ class RevChatApp {
 
     // Modals
     this.root.querySelector('#btn-open-invite')?.addEventListener('click', () => {
-      this.mobileDrawerOpen = false;
+      this.setMobileDrawerOpen(false);
       this.openInviteModal();
     });
     this.root.querySelector('#btn-help')?.addEventListener('click', () => {
-      if (this.mobileDrawerOpen) {
-        this.mobileDrawerOpen = false;
-        this.render();
-      }
+      this.setMobileDrawerOpen(false);
       this.activeModal = 'help';
       this.renderModal();
     });
@@ -1442,7 +1448,7 @@ class RevChatApp {
       } else {
         this.whisperTarget = { peerId, nickname };
       }
-      this.mobileDrawerOpen = false;
+      this.setMobileDrawerOpen(false);
       this.updatePeersDOM();
       this.updateContextBannerDOM();
       (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
@@ -1458,7 +1464,7 @@ class RevChatApp {
       const copyBtn = targetEl.closest('[data-copy-id]');
       if (copyBtn) {
         const id = copyBtn.getAttribute('data-copy-id') || '';
-        const target = this.messages.find((m) => m.id === id);
+        const target = this.messageMap.get(id);
         if (target) {
           navigator.clipboard?.writeText(target.text);
           this.showToast('Message copied!');
@@ -1487,7 +1493,7 @@ class RevChatApp {
     safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     safe = safe.replace(
       /\b(https?:\/\/[a-zA-Z0-9._~:/?#\[\]@!$'()*+,;=%-]+)\b/g,
-      '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+      '<a href="$1" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">$1</a>'
     );
     return safe;
   }

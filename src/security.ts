@@ -31,8 +31,9 @@ export function sanitizeObject(input: unknown, depth = 0): any {
   }
   if (typeof input === 'object') {
     const out: Record<string, any> = Object.create(null);
-    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
-      if (FORBIDDEN_KEYS.has(k)) continue;
+    const entries = Object.entries(input as Record<string, unknown>).slice(0, 32);
+    for (const [k, v] of entries) {
+      if (FORBIDDEN_KEYS.has(k) || k.length > 64) continue;
       out[k] = sanitizeObject(v, depth + 1);
     }
     return out;
@@ -130,9 +131,14 @@ export class PeerRateLimiter {
   private buckets = new Map<string, { count: number; resetAt: number }>();
 
   public allow(peerId: string): boolean {
+    if (!peerId || peerId.length > MAX_ID_LENGTH) return false;
     const now = Date.now();
     const entry = this.buckets.get(peerId);
     if (!entry || now > entry.resetAt) {
+      if (!entry && this.buckets.size >= 256) {
+        this.prune();
+        if (this.buckets.size >= 256) return false;
+      }
       this.buckets.set(peerId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
       return true;
     }
