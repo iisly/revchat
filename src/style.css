@@ -592,6 +592,21 @@ button.small {
   display: block;
 }
 
+.step-block {
+  border: 1px solid var(--border);
+  padding: 10px;
+  background: var(--bg-alt);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-title {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+}
+
 .toast {
   position: fixed;
   bottom: 64px;

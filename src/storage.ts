@@ -19,7 +19,7 @@ export function generateUUID(): string {
 }
 
 export function generateRoomCode(): string {
-  return `ROOM-${randomId(4).toUpperCase()}`;
+  return `ROOM-${randomId(6).toUpperCase()}`;
 }
 
 export function normalizeRoomId(input: string): string {
@@ -43,7 +43,7 @@ export function createSessionProfile(): UserProfile {
   const clientId = randomId(6);
   return {
     clientId,
-    nickname: `peer-${clientId.slice(0, 4)}`,
+    nickname: `PEER-${clientId.toUpperCase()}`,
     theme: 'auto',
   };
 }
