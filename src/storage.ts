@@ -1,8 +1,6 @@
 import { UserProfile } from './types';
 
 const PROFILE_KEY = 'revchat_profile_v1';
-const LEGACY_RECENT_ROOMS_KEY = 'revchat_recent_rooms_v1';
-const LEGACY_MESSAGES_PREFIX = 'revchat_msgs_v1_';
 
 function randomId(len = 6): string {
   const chars = '23456789abcdefghjkmnpqrstuvwxyz';
@@ -37,26 +35,7 @@ export function normalizeRoomId(input: string): string {
   return cleaned.slice(0, 32) || 'LOBBY';
 }
 
-export function purgeLegacyRoomStorage(): void {
-  try {
-    localStorage.removeItem(LEGACY_RECENT_ROOMS_KEY);
-    const keysToDelete: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(LEGACY_MESSAGES_PREFIX)) {
-        keysToDelete.push(k);
-      }
-    }
-    for (const k of keysToDelete) {
-      localStorage.removeItem(k);
-    }
-  } catch {
-    // ignore
-  }
-}
-
 export function loadUserProfile(): UserProfile {
-  purgeLegacyRoomStorage();
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (raw) {
