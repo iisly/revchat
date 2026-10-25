@@ -26,5 +26,5 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
 | `/nick <name>` | Change your nickname |
 | `/room [code]` | Switch room (or random room if omitted) |
 | `/follow <code>` | Follow a peer into their active room |
-| `/size [s\|m\|l\|xl]` | Change chat font size |
+| `/size [s\|m\|l]` | Change main panel font size |
 | `/clear` | Clear local chat screen |

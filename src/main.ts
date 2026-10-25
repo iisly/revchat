@@ -47,11 +47,10 @@ const ASCII_EMOTES: Record<string, string> = {
   '/dance': '♪┏(・o･)┛♪',
 };
 
-const FONT_SIZES: Record<'s' | 'm' | 'l' | 'xl', { label: string; px: string }> = {
-  s: { label: 'S', px: '12px' },
-  m: { label: 'M', px: '14px' },
-  l: { label: 'L', px: '17px' },
-  xl: { label: 'XL', px: '20px' },
+const FONT_SIZES: Record<'s' | 'm' | 'l', { label: string; px: string }> = {
+  s: { label: 'S', px: '14px' },
+  m: { label: 'M', px: '17px' },
+  l: { label: 'L', px: '20px' },
 };
 
 const SLASH_COMMANDS: SlashCommandDef[] = [
@@ -77,7 +76,7 @@ const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/nick', usage: '/nick <name>', desc: 'Change your nickname', needsArgs: true },
   { cmd: '/room', usage: '/room [code]', desc: 'Switch room (or random room if omitted)', needsArgs: false },
   { cmd: '/follow', usage: '/follow <code>', desc: 'Follow a peer into their active room', needsArgs: true },
-  { cmd: '/size', usage: '/size [s|m|l|xl]', desc: 'Change chat font size (or cycle)', needsArgs: false },
+  { cmd: '/size', usage: '/size [s|m|l]', desc: 'Change main panel font size (or cycle)', needsArgs: false },
   { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
   { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
 ];
@@ -106,7 +105,7 @@ class RevChatApp {
   private unreadWhileScrolled = 0;
   private slashMenuIndex = 0;
   private slashMenuDismissed = false;
-  private fontSizeKey: 's' | 'm' | 'l' | 'xl' = 'm';
+  private fontSizeKey: 's' | 'm' | 'l' = 's';
 
   // Timers
   private lastTypingSentAt = 0;
@@ -317,8 +316,8 @@ class RevChatApp {
     this.scrollToBottom();
   }
 
-  private applyFontSize(key?: 's' | 'm' | 'l' | 'xl'): void {
-    const order: ('s' | 'm' | 'l' | 'xl')[] = ['s', 'm', 'l', 'xl'];
+  private applyFontSize(key?: 's' | 'm' | 'l'): void {
+    const order: ('s' | 'm' | 'l')[] = ['s', 'm', 'l'];
     if (key && FONT_SIZES[key]) {
       this.fontSizeKey = key;
     } else {
@@ -401,8 +400,8 @@ class RevChatApp {
         return true;
       }
       case '/size': {
-        const arg = argStr.toLowerCase() as 's' | 'm' | 'l' | 'xl';
-        if (arg === 's' || arg === 'm' || arg === 'l' || arg === 'xl') {
+        const arg = argStr.toLowerCase() as 's' | 'm' | 'l';
+        if (arg === 's' || arg === 'm' || arg === 'l') {
           this.applyFontSize(arg);
         } else {
           this.applyFontSize();
@@ -564,13 +563,12 @@ class RevChatApp {
             </div>
           </div>
 
-          <!-- Sidebar Footer Toolbar: Direct Font Size (S/M/L/XL) + Theme + Help -->
+          <!-- Sidebar Footer Toolbar: Direct Font Size (S/M/L) + Theme + Help -->
           <div class="side-toolbar">
             <div class="size-group">
-              <button class="small ${this.fontSizeKey === 's' ? 'primary' : ''}" data-size-key="s" title="Small Font (12px)">S</button>
-              <button class="small ${this.fontSizeKey === 'm' ? 'primary' : ''}" data-size-key="m" title="Medium Font (14px)">M</button>
-              <button class="small ${this.fontSizeKey === 'l' ? 'primary' : ''}" data-size-key="l" title="Large Font (17px)">L</button>
-              <button class="small ${this.fontSizeKey === 'xl' ? 'primary' : ''}" data-size-key="xl" title="Extra Large Font (20px)">XL</button>
+              <button class="small ${this.fontSizeKey === 's' ? 'primary' : ''}" data-size-key="s" title="Small Font (14px)">S</button>
+              <button class="small ${this.fontSizeKey === 'm' ? 'primary' : ''}" data-size-key="m" title="Medium Font (17px)">M</button>
+              <button class="small ${this.fontSizeKey === 'l' ? 'primary' : ''}" data-size-key="l" title="Large Font (20px)">L</button>
             </div>
             <div class="tool-group">
               <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
@@ -680,7 +678,7 @@ class RevChatApp {
   private renderPeersListHtml(): string {
     if (this.peers.length === 0) {
       return `
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-muted);padding:8px 0;">
+        <div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);padding:8px 0;">
           No remote peers connected yet.<br/>
           • Open another tab to test instant local mesh<br/>
           • Or share <b>QR / Invite Link</b> with mobile/desktop
@@ -1074,7 +1072,7 @@ class RevChatApp {
                   <div><code>/nick &lt;name&gt;</code> — Change your display nickname</div>
                   <div><code>/room [code]</code> — Switch room (or random room if empty)</div>
                   <div><code>/follow &lt;code&gt;</code> — Follow a peer into their active room</div>
-                  <div><code>/size [s|m|l|xl]</code> — Change chat font size</div>
+                  <div><code>/size [s|m|l]</code> — Change main panel font size</div>
                   <div><code>/roll [max]</code> — Roll a dice (default 1–100)</div>
                   <div><code>/coin</code> — Flip a coin (HEADS / TAILS)</div>
                   <div><code>/rps [r|p|s]</code> — Throw Rock / Paper / Scissors (or random)</div>
@@ -1128,7 +1126,7 @@ class RevChatApp {
     // Font Size Direct Buttons & Theme
     this.root.querySelectorAll('[data-size-key]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const key = btn.getAttribute('data-size-key') as 's' | 'm' | 'l' | 'xl' | null;
+        const key = btn.getAttribute('data-size-key') as 's' | 'm' | 'l' | null;
         if (key) {
           this.applyFontSize(key);
         }

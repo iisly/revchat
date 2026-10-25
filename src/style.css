@@ -65,7 +65,7 @@ body {
 /* Main Desktop Split Layout */
 .layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px 1fr;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -113,7 +113,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
 }
 
@@ -139,7 +139,7 @@ body {
 
 .sec-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-muted);
@@ -166,7 +166,8 @@ textarea {
   border: 1px solid var(--border);
   padding: 6px 8px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 15px;
+  min-height: 36px;
   border-radius: 0;
   outline: none;
   width: 100%;
@@ -184,8 +185,9 @@ button,
   color: var(--fg);
   border: 1px solid var(--border);
   padding: 6px 10px;
+  min-height: 36px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
   touch-action: manipulation;
@@ -217,8 +219,9 @@ button.primary:hover {
 }
 
 button.small {
-  padding: 3px 6px;
-  font-size: 11px;
+  padding: 4px 8px;
+  min-height: 28px;
+  font-size: 12px;
 }
 
 .kv-line {
@@ -226,8 +229,8 @@ button.small {
   align-items: center;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 12px;
-  margin-top: 4px;
+  font-size: 13px;
+  margin-top: 6px;
   color: var(--fg-muted);
 }
 
@@ -235,9 +238,9 @@ button.small {
   font-family: var(--font-mono);
   background: var(--bg);
   border: 1px solid var(--border);
-  padding: 1px 5px;
+  padding: 2px 6px;
   color: var(--fg);
-  font-size: 11px;
+  font-size: 12px;
   user-select: all;
 }
 
@@ -256,7 +259,7 @@ button.small {
   background: var(--bg);
   border: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .peer-meta {
@@ -275,7 +278,7 @@ button.small {
 }
 
 .peer-sub {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--fg-muted);
   display: flex;
   gap: 6px;
@@ -284,8 +287,8 @@ button.small {
 
 .badge {
   font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 1px 4px;
+  font-size: 11px;
+  padding: 1px 5px;
   border: 1px solid var(--border);
   background: var(--bg-alt);
 }
@@ -303,6 +306,7 @@ button.small {
   overflow: hidden;
   background: var(--bg);
   position: relative;
+  font-size: var(--msg-font-size, 14px);
 }
 
 .chat-topbar {
@@ -326,7 +330,7 @@ button.small {
 .room-badge {
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 14px;
+  font-size: 1em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -363,18 +367,18 @@ button.small {
 
 .empty-state {
   margin: auto;
-  max-width: 440px;
+  max-width: 480px;
   border: 1px dashed var(--border);
   padding: 16px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.88em;
   color: var(--fg-muted);
 }
 
 .empty-state h3 {
   color: var(--fg);
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: 1em;
 }
 
 .empty-state ul {
@@ -408,7 +412,7 @@ button.small {
 
 .msg-row.system {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.82em;
   color: var(--fg-muted);
   padding: 2px 8px;
   border-bottom: none;
@@ -420,7 +424,7 @@ button.small {
   justify-content: space-between;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.82em;
   margin-bottom: 2px;
 }
 
@@ -435,7 +439,7 @@ button.small {
 
 .msg-time {
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: 0.9em;
 }
 
 .msg-meta-right {
@@ -446,18 +450,19 @@ button.small {
 
 .msg-ack {
   color: var(--ok);
-  font-size: 10px;
+  font-size: 0.9em;
 }
 
 .msg-reply-btn {
-  padding: 0 4px;
-  font-size: 10px;
+  padding: 1px 5px;
+  min-height: 22px;
+  font-size: 0.88em;
   opacity: 0.75;
 }
 
 .msg-quote {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.85em;
   color: var(--fg-muted);
   border-left: 2px solid var(--border-strong);
   padding-left: 6px;
@@ -468,7 +473,7 @@ button.small {
 }
 
 .msg-body {
-  font-size: var(--msg-font-size, 14px);
+  font-size: 1em;
   white-space: pre-wrap;
   line-height: 1.45;
 }
@@ -488,7 +493,7 @@ button.small {
   background: var(--bg-alt);
   border: 1px solid var(--border);
   padding: 0 4px;
-  font-size: 12px;
+  font-size: 0.9em;
 }
 
 /* Scroll to bottom floating pill */
@@ -501,7 +506,7 @@ button.small {
   border: 1px solid var(--fg);
   padding: 6px 10px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.85em;
   z-index: 15;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
@@ -513,14 +518,14 @@ button.small {
   background: var(--bg);
   border-top: 1px solid var(--border-strong);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.88em;
   flex-shrink: 0;
   z-index: 25;
 }
 
 .slash-menu-header {
   padding: 4px 12px;
-  font-size: 10px;
+  font-size: 0.85em;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-muted);
@@ -553,7 +558,7 @@ button.small {
 
 .slash-desc {
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.92em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -567,7 +572,7 @@ button.small {
   background: var(--accent-bg);
   border-top: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.82em;
   flex-shrink: 0;
 }
 
@@ -575,7 +580,7 @@ button.small {
   min-height: 18px;
   padding: 2px 12px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.82em;
   color: var(--fg-muted);
   background: var(--bg-alt);
   border-top: 1px solid var(--border);
@@ -598,7 +603,7 @@ button.small {
   min-height: 38px;
   max-height: 120px;
   font-family: var(--font-sans);
-  font-size: 16px; /* Prevents iOS zoom on focus */
+  font-size: max(16px, 0.95em); /* Prevents iOS zoom on focus & scales with L */
   line-height: 1.35;
   padding: 7px 10px;
 }
@@ -717,7 +722,7 @@ button.small {
     top: 0;
     left: 0;
     bottom: 0;
-    width: 260px;
+    width: 280px;
     max-width: 86vw;
     z-index: 90;
     transform: translateX(-100%);
@@ -734,22 +739,6 @@ button.small {
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
     z-index: 80;
-  }
-
-  input[type='text'],
-  input[type='search'] {
-    font-size: 16px; /* Prevent mobile browser auto-zoom */
-    min-height: 38px;
-  }
-
-  button,
-  .btn {
-    min-height: 36px;
-    padding: 6px 10px;
-  }
-
-  button.small {
-    min-height: 28px;
   }
 
   .chat-topbar {
