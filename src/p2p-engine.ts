@@ -9,14 +9,10 @@ import {
 } from './types';
 import { generateUUID, normalizeRoomId } from './storage';
 import {
-  decodeBase64Utf8,
-  encodeBase64Utf8,
   MAX_MESSAGE_TEXT_LENGTH,
   MAX_NICKNAME_LENGTH,
   MAX_PEERS_IN_ROOM,
-  MAX_RAW_PACKET_BYTES,
   PeerRateLimiter,
-  safeJsonParse,
   sanitizeId,
   sanitizeString,
   validateChatMessage,
@@ -27,11 +23,6 @@ const PEER_PREFIX = 'revchat-p-';
 const ROOM_BEACON_PREFIX = 'revchat-r-';
 const SEEN_PACKET_LIMIT = 1500;
 const PING_INTERVAL_MS = 4000;
-
-interface ManualPendingSession {
-  pc: RTCPeerConnection;
-  dc?: RTCDataChannel;
-}
 
 export interface P2PEngineCallbacks {
   onSignalingChange: (state: SignalingState) => void;
@@ -55,31 +46,16 @@ export class P2PEngine {
   private signalingStatus: SignalingState['status'] = 'initializing';
   private signalingError?: string;
 
-  // Active peer connections by remote personal peerId
   private peerConnections = new Map<string, DataConnection>();
-  // Beacon connections (remote peers connected to our beacon instance, or our connection to remote beacon)
   private beaconConnections = new Map<string, DataConnection>();
-  // Manual WebRTC data channels by remote peerId
-  private manualChannels = new Map<string, { pc: RTCPeerConnection; dc: RTCDataChannel }>();
-  private pendingManual: ManualPendingSession | null = null;
-
-  // Local BroadcastChannel for instant same-browser multi-tab discovery & mesh
   private broadcastChannel: BroadcastChannel | null = null;
-
-  // Metadata about known connected peers in the current room
   private peers = new Map<string, PeerInfo>();
 
-  // Deduplication cache for packet IDs
   private seenPackets = new Set<string>();
   private seenPacketQueue: string[] = [];
-
-  // Per-peer rate limiter against floods / relay storms
   private rateLimiter = new PeerRateLimiter();
-
-  // Typing status map: peerId -> { nickname, expiresAt }
   private typingMap = new Map<string, { nickname: string; expiresAt: number }>();
 
-  // Timers
   private pingTimer: number | null = null;
   private beaconCheckTimer: number | null = null;
   private typingCleanupTimer: number | null = null;
@@ -117,14 +93,6 @@ export class P2PEngine {
 
   public getMyPeerId(): string {
     return this.myPeerId;
-  }
-
-  public getShortPeerCode(): string {
-    return this.profile.clientId.toUpperCase();
-  }
-
-  public getRoomId(): string {
-    return this.roomId;
   }
 
   public updateProfile(profile: UserProfile): void {
@@ -195,9 +163,6 @@ export class P2PEngine {
     }
   }
 
-  // =========================================================================
-  // 1. LOCAL BROADCAST CHANNEL (Same-Device Multi-Tab Zero-Config Mesh)
-  // =========================================================================
   private initLocalBroadcast(roomId: string): void {
     if (typeof BroadcastChannel === 'undefined') return;
     try {
@@ -210,25 +175,18 @@ export class P2PEngine {
         this.upsertPeer(packet.senderId, packet.senderName, 'local-broadcast');
         this.handleIncomingPacket(packet, 'local-broadcast');
       };
-
-      // Announce presence immediately on local broadcast channel
       this.sendHelloPacket();
     } catch {
-      // BroadcastChannel not supported or blocked
+      // BroadcastChannel not supported
     }
   }
 
-  // =========================================================================
-  // 2. PEERJS PERSONAL NODE + ROOM RENDEZVOUS BEACON
-  // =========================================================================
   private initPersonalPeer(): void {
     this.signalingStatus = 'initializing';
     this.emitSignalingState();
 
     try {
-      const peer = new Peer(this.myPeerId, {
-        debug: 0,
-      });
+      const peer = new Peer(this.myPeerId, { debug: 0 });
       this.personalPeer = peer;
 
       peer.on('open', (id) => {
@@ -269,7 +227,6 @@ export class P2PEngine {
       peer.on('error', (err: any) => {
         const errType = err?.type || '';
         if (errType === 'unavailable-id') {
-          // Another tab on same device holds our personal ID; append random suffix
           const suffix = Math.floor(100 + Math.random() * 899);
           this.myPeerId = `${PEER_PREFIX}${sanitizeId(this.profile.clientId).toLowerCase()}-${suffix}`;
           try {
@@ -280,10 +237,7 @@ export class P2PEngine {
           this.initPersonalPeer();
           return;
         }
-        if (errType === 'peer-unavailable') {
-          // Normal when probing a room beacon or peer that isn't online yet
-          return;
-        }
+        if (errType === 'peer-unavailable') return;
         this.signalingError = err?.message || String(err);
         if (this.signalingStatus === 'initializing') {
           this.signalingStatus = 'offline';
@@ -340,9 +294,7 @@ export class P2PEngine {
       });
 
       beacon.on('error', (err: any) => {
-        const errType = err?.type || '';
-        if (errType === 'unavailable-id') {
-          // Someone else is already the room coordinator! Destroy our candidate beacon and connect to theirs.
+        if ((err?.type || '') === 'unavailable-id') {
           this.isBeaconHost = false;
           try {
             beacon.destroy();
@@ -365,13 +317,9 @@ export class P2PEngine {
     if (!this.personalPeer || this.personalPeer.disconnected || this.personalPeer.destroyed) {
       return;
     }
-    if (this.isBeaconHost) {
-      return;
-    }
+    if (this.isBeaconHost) return;
     const beaconId = this.getBeaconIdForRoom(roomId);
-    if (this.beaconConnections.has(beaconId)) {
-      return;
-    }
+    if (this.beaconConnections.has(beaconId)) return;
 
     try {
       const conn = this.personalPeer.connect(beaconId, {
@@ -437,14 +385,12 @@ export class P2PEngine {
         this.peerConnections.set(remotePeerId, conn);
       }
 
-      // Send our HELLO packet over this connection
       const helloPacket = this.createPacket('HELLO', {
         nickname: this.profile.nickname,
         isBeaconHost: this.isBeaconHost,
       });
       this.safeSendConn(conn, helloPacket);
 
-      // Send known peer list so all peers form a direct full mesh
       const knownPeerIds = Array.from(this.peers.keys()).slice(0, MAX_PEERS_IN_ROOM);
       if (!knownPeerIds.includes(this.myPeerId)) {
         knownPeerIds.push(this.myPeerId);
@@ -454,15 +400,12 @@ export class P2PEngine {
       });
       this.safeSendConn(conn, peerListPacket);
 
-      // Sync recent room history if enabled
-      if (this.profile.syncHistoryOnJoin) {
-        const recent = this.callbacks.getRecentRoomMessages(this.roomId).slice(-50);
-        if (recent.length > 0) {
-          const syncPacket = this.createPacket('HISTORY_SYNC', {
-            messages: recent,
-          });
-          this.safeSendConn(conn, syncPacket);
-        }
+      const recent = this.callbacks.getRecentRoomMessages(this.roomId).slice(-50);
+      if (recent.length > 0) {
+        const syncPacket = this.createPacket('HISTORY_SYNC', {
+          messages: recent,
+        });
+        this.safeSendConn(conn, syncPacket);
       }
     });
 
@@ -471,7 +414,6 @@ export class P2PEngine {
       if (!packet) return;
       if (!this.rateLimiter.allow(packet.senderId)) return;
 
-      // Associate connection with the actual personal senderId if it came through a direct channel
       if (packet.senderId && packet.senderId !== this.myPeerId && !isBeaconChannel) {
         this.peerConnections.set(packet.senderId, conn);
       }
@@ -505,180 +447,11 @@ export class P2PEngine {
     if (this.destroyed) return;
     this.rateLimiter.prune();
     if (!this.isBeaconHost && this.beaconConnections.size === 0) {
-      // Try claiming the beacon if the previous beacon host left, or reconnecting to it
       this.initRoomBeaconOrJoin(this.roomId);
     }
     this.sendHelloPacket();
   }
 
-  // =========================================================================
-  // 3. MANUAL SERVERLESS WEBRTC SDP ENGINE (Zero-Server Offer/Answer)
-  // =========================================================================
-  private getManualIceServers(): RTCIceServer[] {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return [];
-    }
-    return [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ];
-  }
-
-  public async createManualOffer(): Promise<string> {
-    if (this.pendingManual) {
-      try {
-        this.pendingManual.pc.close();
-      } catch {
-        // ignore
-      }
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: this.getManualIceServers(),
-    });
-
-    const dc = pc.createDataChannel('revchat', { ordered: true });
-    this.pendingManual = { pc, dc };
-    this.bindManualDataChannel(pc, dc);
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await this.waitForIceGathering(pc, 1500);
-
-    const tokenObj = {
-      t: 'offer',
-      p: this.myPeerId,
-      n: this.profile.nickname,
-      r: this.roomId,
-      sdp: pc.localDescription?.sdp || offer.sdp,
-    };
-
-    return encodeBase64Utf8(tokenObj);
-  }
-
-  public async acceptManualOfferAndCreateAnswer(offerToken: string): Promise<string> {
-    const decoded = decodeBase64Utf8<{ t?: string; sdp?: string }>(offerToken);
-    if (!decoded || decoded.t !== 'offer' || typeof decoded.sdp !== 'string') {
-      throw new Error('Invalid or oversized Offer Token');
-    }
-
-    if (this.pendingManual) {
-      try {
-        this.pendingManual.pc.close();
-      } catch {
-        // ignore
-      }
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: this.getManualIceServers(),
-    });
-
-    this.pendingManual = { pc };
-    pc.ondatachannel = (event) => {
-      this.bindManualDataChannel(pc, event.channel);
-    };
-
-    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: decoded.sdp }));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await this.waitForIceGathering(pc, 1500);
-
-    const tokenObj = {
-      t: 'answer',
-      p: this.myPeerId,
-      n: this.profile.nickname,
-      r: this.roomId,
-      sdp: pc.localDescription?.sdp || answer.sdp,
-    };
-
-    return encodeBase64Utf8(tokenObj);
-  }
-
-  public async completeManualHandshake(answerToken: string): Promise<void> {
-    if (!this.pendingManual) {
-      throw new Error('No pending Offer found. Generate an Offer first.');
-    }
-    const decoded = decodeBase64Utf8<{ t?: string; sdp?: string }>(answerToken);
-    if (!decoded || decoded.t !== 'answer' || typeof decoded.sdp !== 'string') {
-      throw new Error('Invalid or oversized Answer Token');
-    }
-
-    await this.pendingManual.pc.setRemoteDescription(
-      new RTCSessionDescription({ type: 'answer', sdp: decoded.sdp })
-    );
-  }
-
-  private bindManualDataChannel(pc: RTCPeerConnection, dc: RTCDataChannel): void {
-    let remoteId = '';
-
-    dc.onopen = () => {
-      const hello = this.createPacket('HELLO', {
-        nickname: this.profile.nickname,
-        isBeaconHost: this.isBeaconHost,
-      });
-      try {
-        dc.send(JSON.stringify(hello));
-      } catch {
-        // ignore
-      }
-
-      if (this.profile.syncHistoryOnJoin) {
-        const recent = this.callbacks.getRecentRoomMessages(this.roomId).slice(-50);
-        if (recent.length > 0) {
-          const syncPacket = this.createPacket('HISTORY_SYNC', { messages: recent });
-          try {
-            dc.send(JSON.stringify(syncPacket));
-          } catch {
-            // ignore
-          }
-        }
-      }
-    };
-
-    dc.onmessage = (ev) => {
-      if (typeof ev.data !== 'string' || ev.data.length > MAX_RAW_PACKET_BYTES) return;
-      const parsed = safeJsonParse(ev.data, MAX_RAW_PACKET_BYTES);
-      const packet = validateIncomingPacket(parsed);
-      if (!packet) return;
-      if (!this.rateLimiter.allow(packet.senderId)) return;
-
-      remoteId = packet.senderId;
-      this.manualChannels.set(remoteId, { pc, dc });
-      this.upsertPeer(packet.senderId, packet.senderName, 'manual-webrtc');
-      this.handleIncomingPacket(packet, 'manual-webrtc');
-    };
-
-    dc.onclose = () => {
-      if (remoteId) {
-        this.manualChannels.delete(remoteId);
-        this.peers.delete(remoteId);
-        this.emitPeersChange();
-      }
-    };
-  }
-
-  private waitForIceGathering(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
-    if (pc.iceGatheringState === 'complete') return Promise.resolve();
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        pc.removeEventListener('icegatheringstatechange', check);
-        resolve();
-      }, timeoutMs);
-      const check = () => {
-        if (pc.iceGatheringState === 'complete') {
-          clearTimeout(timer);
-          pc.removeEventListener('icegatheringstatechange', check);
-          resolve();
-        }
-      };
-      pc.addEventListener('icegatheringstatechange', check);
-    });
-  }
-
-  // =========================================================================
-  // 4. PACKET ROUTING, DEDUPLICATION, AND CHAT LOGIC
-  // =========================================================================
   private markPacketSeen(packetId: string): boolean {
     if (this.seenPackets.has(packetId)) return true;
     this.seenPackets.add(packetId);
@@ -712,7 +485,6 @@ export class P2PEngine {
   }
 
   private dispatchPacketToAll(packet: P2PPacket, excludeConn?: DataConnection): void {
-    // 1. BroadcastChannel (same-device tabs)
     if (this.broadcastChannel && packet.roomId === this.roomId) {
       try {
         this.broadcastChannel.postMessage(packet);
@@ -721,31 +493,15 @@ export class P2PEngine {
       }
     }
 
-    // 2. Direct PeerJS mesh connections
     for (const conn of this.peerConnections.values()) {
       if (conn !== excludeConn && conn.open) {
         this.safeSendConn(conn, packet);
       }
     }
 
-    // 3. Beacon connections (relay fallback)
     for (const conn of this.beaconConnections.values()) {
       if (conn !== excludeConn && conn.open) {
         this.safeSendConn(conn, packet);
-      }
-    }
-
-    // 4. Manual WebRTC channels
-    const serialized = JSON.stringify(packet);
-    if (serialized.length <= MAX_RAW_PACKET_BYTES) {
-      for (const { dc } of this.manualChannels.values()) {
-        if (dc.readyState === 'open') {
-          try {
-            dc.send(serialized);
-          } catch {
-            // ignore
-          }
-        }
       }
     }
   }
@@ -756,7 +512,7 @@ export class P2PEngine {
         conn.send(packet);
       }
     } catch {
-      // ignore send errors
+      // ignore
     }
   }
 
@@ -768,7 +524,6 @@ export class P2PEngine {
     if (packet.senderId === this.myPeerId) return;
     if (this.markPacketSeen(packet.packetId)) return;
 
-    // Relay packet if TTL > 1 (enables Hub Relay & Manual-WebRTC Bridge across room peers!)
     if (packet.ttl > 1) {
       const relayed: P2PPacket = { ...packet, ttl: packet.ttl - 1 };
       this.dispatchPacketToAll(relayed, sourceConn);
@@ -783,7 +538,6 @@ export class P2PEngine {
           transport,
           Boolean(packet.payload?.isBeaconHost)
         );
-        // Reply with PONG so they immediately get RTT
         const pong = this.createPacket(
           'PONG',
           { targetId: packet.senderId, sentAt: packet.timestamp },
@@ -814,9 +568,7 @@ export class P2PEngine {
       case 'CHAT_MSG': {
         const msg = validateChatMessage(packet.payload?.message, this.roomId);
         if (!msg) break;
-        // Enforce that senderId matches the authenticated packet senderId
         msg.senderId = packet.senderId;
-        // If private whisper to someone else, ignore display (already relayed if needed)
         if (msg.targetPeerId && msg.targetPeerId !== this.myPeerId && msg.senderId !== this.myPeerId) {
           break;
         }
@@ -824,7 +576,6 @@ export class P2PEngine {
         this.emitTypingChange();
         this.callbacks.onChatMessage(msg, false);
 
-        // Send delivery ACK back
         const ack = this.createPacket(
           'CHAT_ACK',
           { messageId: msg.id, ackPeerId: this.myPeerId },
@@ -844,7 +595,6 @@ export class P2PEngine {
       }
 
       case 'HISTORY_SYNC': {
-        if (!this.profile.syncHistoryOnJoin) break;
         const rawMessages = packet.payload?.messages;
         if (!Array.isArray(rawMessages)) break;
         const capped = rawMessages.slice(-50);
@@ -944,7 +694,7 @@ export class P2PEngine {
       existing.nickname = safeNick || existing.nickname;
       existing.lastSeenAt = now;
       existing.state = 'connected';
-      if (transport === 'peerjs-mesh' || transport === 'manual-webrtc') {
+      if (transport === 'peerjs-mesh') {
         existing.transport = transport;
       }
       if (typeof isBeaconHost === 'boolean') {
@@ -966,9 +716,6 @@ export class P2PEngine {
     this.emitPeersChange();
   }
 
-  // =========================================================================
-  // 5. PUBLIC ACTIONS (SEND CHAT, TYPING, HEARTBEATS)
-  // =========================================================================
   public sendChatMessage(
     text: string,
     replyTo?: ChatMessage['replyTo'],
@@ -1009,7 +756,6 @@ export class P2PEngine {
     const now = Date.now();
     this.broadcastPacket('PING', { sentAt: now }, 1);
 
-    // Prune stale broadcast-only peers that haven't responded in 18s
     let changed = false;
     for (const [id, peer] of this.peers.entries()) {
       if (now - peer.lastSeenAt > 18000) {

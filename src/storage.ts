@@ -45,8 +45,6 @@ export function loadUserProfile(): UserProfile {
           clientId: parsed.clientId,
           nickname: parsed.nickname.slice(0, 24),
           theme: parsed.theme || 'auto',
-          soundEnabled: parsed.soundEnabled ?? false,
-          syncHistoryOnJoin: parsed.syncHistoryOnJoin ?? true,
         };
       }
     }
@@ -59,8 +57,6 @@ export function loadUserProfile(): UserProfile {
     clientId,
     nickname: `peer-${clientId.slice(0, 4)}`,
     theme: 'auto',
-    soundEnabled: false,
-    syncHistoryOnJoin: true,
   };
   saveUserProfile(defaultProfile);
   return defaultProfile;

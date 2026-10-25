@@ -23,7 +23,7 @@ class RevChatApp {
 
   // UI state
   private mobileDrawerOpen = false;
-  private activeModal: 'none' | 'invite' | 'manual-sdp' | 'help' = 'none';
+  private activeModal: 'none' | 'invite' | 'help' = 'none';
   private inviteQrSvg = '';
   private searchOpen = false;
   private searchQuery = '';
@@ -32,18 +32,10 @@ class RevChatApp {
   private isAtBottom = true;
   private unreadWhileScrolled = 0;
 
-  // Manual SDP modal state
-  private manualOfferOut = '';
-  private manualOfferIn = '';
-  private manualAnswerOut = '';
-  private manualAnswerIn = '';
-  private manualStatusMsg = '';
-
   // Typing debounce
   private lastTypingSentAt = 0;
   private stopTypingTimer: number | null = null;
   private toastTimer: number | null = null;
-  private toastText = '';
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -129,7 +121,6 @@ class RevChatApp {
         const prevStatus = this.signalingState.status;
         this.signalingState = state;
         if (prevStatus !== 'ready' && state.status === 'ready') {
-          // Check if URL has a specific peer parameter to auto-dial
           const params = new URLSearchParams(window.location.search);
           const peerToDial = params.get('peer');
           if (peerToDial && peerToDial !== state.myPeerId) {
@@ -148,10 +139,6 @@ class RevChatApp {
         this.messages.push(msg);
         if (isHistorySync) {
           this.messages.sort((a, b) => a.timestamp - b.timestamp);
-        }
-
-        if (!isHistorySync && msg.senderId !== this.signalingState.myPeerId) {
-          this.playNotificationTick();
         }
         this.appendOrRefreshMessages();
       },
@@ -191,28 +178,7 @@ class RevChatApp {
     this.engine.start();
   }
 
-  private playNotificationTick(): void {
-    if (!this.profile.soundEnabled) return;
-    try {
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 660;
-      gain.gain.value = 0.04;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.05);
-    } catch {
-      // ignore audio errors
-    }
-  }
-
   private showToast(text: string): void {
-    this.toastText = text;
     if (this.toastTimer) clearTimeout(this.toastTimer);
     let el = this.root.querySelector('.toast') as HTMLElement | null;
     if (!el) {
@@ -223,7 +189,6 @@ class RevChatApp {
     el.textContent = text;
     this.toastTimer = window.setTimeout(() => {
       el?.remove();
-      this.toastText = '';
     }, 2400);
   }
 
@@ -250,7 +215,6 @@ class RevChatApp {
     const text = rawInput.trim();
     if (!text) return;
 
-    // Handle slash commands
     if (text.startsWith('/')) {
       const parts = text.split(' ');
       const cmd = parts[0].toLowerCase();
@@ -306,22 +270,6 @@ class RevChatApp {
     this.scrollToBottom();
   }
 
-  private exportRoomHistory(): void {
-    const exportData = {
-      roomId: this.roomId,
-      exportedAt: new Date().toISOString(),
-      messages: this.messages,
-    };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `revchat-${this.roomId}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    this.showToast('Chat log exported');
-  }
-
   // =========================================================================
   // DOM RENDERING & INCREMENTAL UPDATES
   // =========================================================================
@@ -338,9 +286,6 @@ class RevChatApp {
             <div style="display:flex;gap:4px;">
               <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
                 ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
-              </button>
-              <button class="small" id="btn-sound" title="Toggle Notification Beep">
-                SND:${this.profile.soundEnabled ? 'ON' : 'OFF'}
               </button>
               <button class="small mobile-only" id="btn-close-drawer">✕</button>
             </div>
@@ -387,8 +332,7 @@ class RevChatApp {
               <button id="btn-dial-peer">DIAL</button>
             </div>
             <div class="field-row" style="margin-top:6px;">
-              <button style="flex:1" id="btn-open-invite">QR / INVITE LINK</button>
-              <button style="flex:1" id="btn-open-sdp">MANUAL SDP</button>
+              <button style="width:100%" id="btn-open-invite">QR / INVITE LINK</button>
             </div>
           </div>
 
@@ -470,20 +414,14 @@ class RevChatApp {
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-muted);padding:8px 0;">
           No remote peers connected yet.<br/>
           • Open another tab to test instant local mesh<br/>
-          • Or share <b>QR / Invite Link</b> with mobile/desktop<br/>
-          • Or use <b>Manual SDP</b> for serverless connect
+          • Or share <b>QR / Invite Link</b> with mobile/desktop
         </div>
       `;
     }
 
     return this.peers
       .map((p) => {
-        const transportLabel =
-          p.transport === 'local-broadcast'
-            ? 'LOCAL'
-            : p.transport === 'manual-webrtc'
-            ? 'SDP'
-            : 'WEBRTC';
+        const transportLabel = p.transport === 'local-broadcast' ? 'LOCAL' : 'WEBRTC';
         const rttLabel = p.rttMs !== null ? `${p.rttMs}ms` : '...';
         const isWhispering = this.whisperTarget?.peerId === p.peerId;
         return `
@@ -527,7 +465,6 @@ class RevChatApp {
           <ul>
             <li><b>Same Browser:</b> Open this URL in a second tab for instant local P2P chat.</li>
             <li><b>Mobile / Remote:</b> Tap <b>QR / INVITE LINK</b> to scan QR code or share room link.</li>
-            <li><b>Zero-Server Mode:</b> Tap <b>MANUAL SDP</b> to exchange WebRTC Offer/Answer tokens directly.</li>
             <li><b>Slash Commands:</b> <code>/nick name</code>, <code>/room code</code>, <code>/clear</code>, <code>/help</code></li>
           </ul>
         </div>
@@ -624,7 +561,7 @@ class RevChatApp {
 
   private renderTypingText(): string {
     if (this.typingPeers.length === 0) {
-      return `<span>Ready • ${this.signalingState.status === 'ready' ? 'WebRTC Online' : 'Local/Direct Mode'}</span>`;
+      return `<span>Ready • ${this.signalingState.status === 'ready' ? 'WebRTC Online' : 'Local Mode'}</span>`;
     }
     const names = this.typingPeers.map((t) => this.escapeHtml(t.nickname)).join(', ');
     return `<span><b>${names}</b> typing...</span>`;
@@ -635,7 +572,7 @@ class RevChatApp {
       return this.signalingState.isBeaconHost ? 'ONLINE (HOST)' : 'ONLINE';
     }
     if (this.signalingState.status === 'initializing') return 'CONNECTING...';
-    return 'LOCAL / SDP';
+    return 'LOCAL';
   }
 
   private updateStatusDOM(): void {
@@ -664,6 +601,7 @@ class RevChatApp {
 
     const topBadge = this.root.querySelector('#topbar-peer-badge');
     if (topBadge) {
+      topBadge.textContent = `${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}}`;
       topBadge.textContent = `${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}`;
     }
   }
@@ -732,7 +670,7 @@ class RevChatApp {
   }
 
   // =========================================================================
-  // MODALS (INVITE / QR, MANUAL WEBRTC SDP, HELP)
+  // MODALS (INVITE / QR, HELP)
   // =========================================================================
   private async openInviteModal(): Promise<void> {
     this.activeModal = 'invite';
@@ -814,139 +752,6 @@ class RevChatApp {
       return;
     }
 
-    if (this.activeModal === 'manual-sdp') {
-      modalRoot.innerHTML = `
-        <div class="modal-backdrop" id="modal-backdrop">
-          <div class="modal">
-            <div class="modal-header">
-              <span>MANUAL WEBRTC SDP (SERVERLESS P2P)</span>
-              <button class="small" id="btn-modal-close">✕</button>
-            </div>
-            <div class="modal-body">
-              <div style="font-size:12px;color:var(--fg-muted);">
-                Connect directly without any signaling server by exchanging Offer & Answer tokens over any channel.
-              </div>
-              ${
-                this.manualStatusMsg
-                  ? `<div class="badge ok" style="padding:6px;">${this.escapeHtml(this.manualStatusMsg)}</div>`
-                  : ''
-              }
-
-              <!-- Peer A: Create Offer -->
-              <div class="step-block">
-                <div class="step-title">Option A (Initiator): 1. Generate Offer → 2. Paste Answer</div>
-                <div class="field-row">
-                  <button class="primary" id="btn-gen-offer">1. GENERATE OFFER TOKEN</button>
-                  ${
-                    this.manualOfferOut
-                      ? `<button id="btn-copy-offer">COPY OFFER</button>`
-                      : ''
-                  }
-                </div>
-                ${
-                  this.manualOfferOut
-                    ? `<input type="text" readonly value="${this.escapeAttr(this.manualOfferOut)}" />`
-                    : ''
-                }
-                <div class="field-row" style="margin-top:4px;">
-                  <input type="text" id="input-answer-token" value="${this.escapeAttr(this.manualAnswerIn)}" placeholder="Paste Peer B's Answer Token here..." />
-                  <button class="primary" id="btn-complete-sdp">2. CONNECT</button>
-                </div>
-              </div>
-
-              <!-- Peer B: Accept Offer -->
-              <div class="step-block">
-                <div class="step-title">Option B (Joiner): Paste Offer → Generate Answer</div>
-                <div class="field-row">
-                  <input type="text" id="input-offer-token" value="${this.escapeAttr(this.manualOfferIn)}" placeholder="Paste Peer A's Offer Token here..." />
-                  <button class="primary" id="btn-accept-offer">ACCEPT OFFER</button>
-                </div>
-                ${
-                  this.manualAnswerOut
-                    ? `
-                  <div class="field-row">
-                    <input type="text" readonly value="${this.escapeAttr(this.manualAnswerOut)}" />
-                    <button class="primary" id="btn-copy-answer">COPY ANSWER</button>
-                  </div>
-                `
-                    : ''
-                }
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      modalRoot.querySelector('#btn-modal-close')?.addEventListener('click', () => {
-        this.activeModal = 'none';
-        this.renderModal();
-      });
-      modalRoot.querySelector('#modal-backdrop')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) {
-          this.activeModal = 'none';
-          this.renderModal();
-        }
-      });
-
-      modalRoot.querySelector('#btn-gen-offer')?.addEventListener('click', async () => {
-        try {
-          this.manualStatusMsg = 'Gathering ICE candidates for Offer...';
-          this.renderModal();
-          this.manualOfferOut = await this.engine.createManualOffer();
-          this.manualStatusMsg = 'Offer ready! Copy and send it to your peer.';
-          this.renderModal();
-        } catch (err: any) {
-          this.manualStatusMsg = `Error: ${err?.message || err}`;
-          this.renderModal();
-        }
-      });
-
-      modalRoot.querySelector('#btn-copy-offer')?.addEventListener('click', () => {
-        navigator.clipboard?.writeText(this.manualOfferOut);
-        this.showToast('Offer Token copied!');
-      });
-
-      modalRoot.querySelector('#btn-accept-offer')?.addEventListener('click', async () => {
-        const input = modalRoot.querySelector('#input-offer-token') as HTMLInputElement | null;
-        const val = input?.value.trim() || '';
-        if (!val) return;
-        this.manualOfferIn = val;
-        try {
-          this.manualStatusMsg = 'Generating Answer token...';
-          this.renderModal();
-          this.manualAnswerOut = await this.engine.acceptManualOfferAndCreateAnswer(val);
-          this.manualStatusMsg = 'Answer token generated! Copy and send it back to Initiator.';
-          this.renderModal();
-        } catch (err: any) {
-          this.manualStatusMsg = `Error: ${err?.message || err}`;
-          this.renderModal();
-        }
-      });
-
-      modalRoot.querySelector('#btn-copy-answer')?.addEventListener('click', () => {
-        navigator.clipboard?.writeText(this.manualAnswerOut);
-        this.showToast('Answer Token copied!');
-      });
-
-      modalRoot.querySelector('#btn-complete-sdp')?.addEventListener('click', async () => {
-        const input = modalRoot.querySelector('#input-answer-token') as HTMLInputElement | null;
-        const val = input?.value.trim() || '';
-        if (!val) return;
-        this.manualAnswerIn = val;
-        try {
-          await this.engine.completeManualHandshake(val);
-          this.manualStatusMsg = 'Handshake completed! DataChannel connected.';
-          this.showToast('Manual WebRTC DataChannel connected!');
-          this.activeModal = 'none';
-          this.renderModal();
-        } catch (err: any) {
-          this.manualStatusMsg = `Error: ${err?.message || err}`;
-          this.renderModal();
-        }
-      });
-      return;
-    }
-
     if (this.activeModal === 'help') {
       modalRoot.innerHTML = `
         <div class="modal-backdrop" id="modal-backdrop">
@@ -960,8 +765,7 @@ class RevChatApp {
                 <div class="step-title">How P2P Connectivity Works</div>
                 <div style="font-size:12px;">
                   1. <b>Room Code Mesh:</b> Peers on the same Room Code discover each other automatically via WebRTC rendezvous and form a direct P2P mesh.<br/>
-                  2. <b>Same-Device Instant Mesh:</b> Multiple tabs in the same browser connect in &lt;1ms via BroadcastChannel + WebRTC.<br/>
-                  3. <b>Manual SDP Fallback:</b> Works even if signaling servers are blocked—exchange Offer & Answer tokens directly.
+                  2. <b>Same-Device Instant Mesh:</b> Multiple tabs in the same browser connect in &lt;1ms via BroadcastChannel + WebRTC.
                 </div>
               </div>
               <div class="step-block">
@@ -976,7 +780,6 @@ class RevChatApp {
                 </div>
               </div>
               <div style="display:flex;gap:6px;justify-content:flex-end;">
-                <button id="btn-modal-export">EXPORT LOG</button>
                 <button id="btn-modal-clear">CLEAR ROOM</button>
               </div>
             </div>
@@ -993,9 +796,6 @@ class RevChatApp {
           this.activeModal = 'none';
           this.renderModal();
         }
-      });
-      modalRoot.querySelector('#btn-modal-export')?.addEventListener('click', () => {
-        this.exportRoomHistory();
       });
       modalRoot.querySelector('#btn-modal-clear')?.addEventListener('click', () => {
         this.messages = [];
@@ -1025,20 +825,13 @@ class RevChatApp {
       this.render();
     });
 
-    // Theme & Sound
+    // Theme
     this.root.querySelector('#btn-theme')?.addEventListener('click', () => {
       const current = document.documentElement.getAttribute('data-theme');
       this.profile.theme = current === 'dark' ? 'light' : 'dark';
       saveUserProfile(this.profile);
       this.applyTheme();
       this.render();
-    });
-
-    this.root.querySelector('#btn-sound')?.addEventListener('click', () => {
-      this.profile.soundEnabled = !this.profile.soundEnabled;
-      saveUserProfile(this.profile);
-      this.render();
-      if (this.profile.soundEnabled) this.playNotificationTick();
     });
 
     // Nickname
@@ -1111,11 +904,6 @@ class RevChatApp {
     this.root.querySelector('#btn-open-invite')?.addEventListener('click', () => {
       this.mobileDrawerOpen = false;
       this.openInviteModal();
-    });
-    this.root.querySelector('#btn-open-sdp')?.addEventListener('click', () => {
-      this.mobileDrawerOpen = false;
-      this.activeModal = 'manual-sdp';
-      this.render();
     });
     this.root.querySelector('#btn-help')?.addEventListener('click', () => {
       this.activeModal = 'help';
@@ -1246,9 +1034,7 @@ class RevChatApp {
   // =========================================================================
   private formatMessageBody(raw: string): string {
     let safe = this.escapeHtml(raw);
-    // Inline `code`
     safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    // Clickable URLs (strictly excluding quotes, HTML entities, and angle brackets)
     safe = safe.replace(
       /\b(https?:\/\/[a-zA-Z0-9._~:/?#\[\]@!$'()*+,;=%-]+)\b/g,
       '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'

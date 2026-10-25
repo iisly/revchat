@@ -1,4 +1,4 @@
-export type ConnectionTransport = 'peerjs-mesh' | 'manual-webrtc' | 'local-broadcast';
+export type ConnectionTransport = 'peerjs-mesh' | 'local-broadcast';
 
 export type PeerConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -25,11 +25,10 @@ export interface ChatMessage {
     senderName: string;
     text: string;
   };
-  targetPeerId?: string; // If set, private whisper (1:1) message inside or outside room
+  targetPeerId?: string;
   targetPeerName?: string;
   system?: boolean;
-  ackedBy: string[]; // List of peerIds that acknowledged receipt
-  editedAt?: number;
+  ackedBy: string[];
 }
 
 export type PacketType =
@@ -59,8 +58,6 @@ export interface UserProfile {
   clientId: string;
   nickname: string;
   theme: 'light' | 'dark' | 'auto';
-  soundEnabled: boolean;
-  syncHistoryOnJoin: boolean;
 }
 
 export interface SignalingState {
@@ -70,4 +67,3 @@ export interface SignalingState {
   isBeaconHost: boolean;
   errorMessage?: string;
 }
-
