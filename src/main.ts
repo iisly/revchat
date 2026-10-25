@@ -491,24 +491,20 @@ class RevChatApp {
   // DOM RENDERING & INCREMENTAL UPDATES
   // =========================================================================
   public render(): void {
+    const prevStream = this.root.querySelector('#message-stream') as HTMLElement | null;
+    const prevScrollTop = prevStream ? prevStream.scrollTop : null;
+    const wasAtBottom = this.isAtBottom;
+
     this.root.innerHTML = `
       <div class="layout">
         ${this.mobileDrawerOpen ? `<div class="drawer-backdrop" id="drawer-backdrop"></div>` : ''}
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
-            <div class="brand">
+            <div class="brand" id="brand-logo" title="Reload revchat">
               <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
               <span>revchat // p2p</span>
             </div>
-            <div style="display:flex;gap:4px;">
-              <button class="small" id="btn-font-size" title="Cycle Chat Font Size (S/M/L/XL)">
-                FONT:${FONT_SIZES[this.fontSizeKey].label}
-              </button>
-              <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
-                ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
-              </button>
-              <button class="small mobile-only" id="btn-close-drawer">✕</button>
-            </div>
+            <button class="small mobile-only" id="btn-close-drawer">✕</button>
           </div>
 
           <!-- Identity Section -->
@@ -579,21 +575,20 @@ class RevChatApp {
               <span class="badge ok" id="topbar-peer-badge">${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}</span>
             </div>
             <div class="topbar-actions">
+              <button class="small" id="btn-font-size" title="Cycle Chat Font Size (S/M/L/XL)">
+                FONT:${FONT_SIZES[this.fontSizeKey].label}
+              </button>
+              <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
+                ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
+              </button>
               <button class="small" id="btn-toggle-search" title="Search Messages">FIND</button>
               <button class="small" id="btn-help" title="Commands & Help">HELP</button>
             </div>
           </header>
 
-          ${
-            this.searchOpen
-              ? `
-            <div class="search-bar">
-              <input type="search" id="input-search" value="${this.escapeAttr(this.searchQuery)}" placeholder="Filter messages by text or author..." />
-              <button class="small" id="btn-close-search">CLOSE</button>
-            </div>
-          `
-              : ''
-          }
+          <div id="search-bar-container">
+            ${this.renderSearchBarHtml()}
+          </div>
 
           <div class="message-stream" id="message-stream">
             ${this.renderMessagesHtml()}
@@ -628,6 +623,48 @@ class RevChatApp {
 
     this.bindEvents();
     this.renderModal();
+
+    const newStream = this.root.querySelector('#message-stream') as HTMLElement | null;
+    if (newStream) {
+      if (wasAtBottom) {
+        this.scrollToBottom();
+      } else if (prevScrollTop !== null) {
+        newStream.scrollTop = prevScrollTop;
+        this.updateJumpButtonDOM();
+      }
+    }
+  }
+
+  private renderSearchBarHtml(): string {
+    if (!this.searchOpen) return '';
+    return `
+      <div class="search-bar">
+        <input type="search" id="input-search" value="${this.escapeAttr(this.searchQuery)}" placeholder="Filter messages by text or author..." />
+        <button class="small" id="btn-close-search">CLOSE</button>
+      </div>
+    `;
+  }
+
+  private updateSearchBarDOM(): void {
+    const container = this.root.querySelector('#search-bar-container');
+    if (!container) return;
+    container.innerHTML = this.renderSearchBarHtml();
+    if (this.searchOpen) {
+      const input = container.querySelector('#input-search') as HTMLInputElement | null;
+      input?.addEventListener('input', (e) => {
+        this.searchQuery = (e.target as HTMLInputElement).value;
+        this.appendOrRefreshMessages();
+      });
+      container.querySelector('#btn-close-search')?.addEventListener('click', () => {
+        this.searchOpen = false;
+        if (this.searchQuery) {
+          this.searchQuery = '';
+          this.appendOrRefreshMessages();
+        }
+        this.updateSearchBarDOM();
+      });
+      input?.focus();
+    }
   }
 
   private renderPeersListHtml(): string {
@@ -1039,9 +1076,6 @@ class RevChatApp {
                   <div><code>/clear</code> — Clear current chat screen</div>
                 </div>
               </div>
-              <div style="display:flex;gap:6px;justify-content:flex-end;">
-                <button id="btn-modal-clear">CLEAR CHAT</button>
-              </div>
             </div>
           </div>
         </div>
@@ -1057,13 +1091,6 @@ class RevChatApp {
           this.renderModal();
         }
       });
-      modalRoot.querySelector('#btn-modal-clear')?.addEventListener('click', () => {
-        this.messages = [];
-        this.messageIds.clear();
-        this.appendOrRefreshMessages();
-        this.activeModal = 'none';
-        this.renderModal();
-      });
     }
   }
 
@@ -1071,7 +1098,10 @@ class RevChatApp {
   // EVENT BINDINGS
   // =========================================================================
   private bindEvents(): void {
-    // Mobile drawer controls
+    // Brand logo reload & Mobile drawer controls
+    this.root.querySelector('#brand-logo')?.addEventListener('click', () => {
+      window.location.reload();
+    });
     this.root.querySelector('#btn-open-drawer')?.addEventListener('click', () => {
       this.mobileDrawerOpen = true;
       this.render();
@@ -1089,11 +1119,14 @@ class RevChatApp {
     this.root.querySelector('#btn-font-size')?.addEventListener('click', () => {
       this.applyFontSize();
     });
-    this.root.querySelector('#btn-theme')?.addEventListener('click', () => {
+    this.root.querySelector('#btn-theme')?.addEventListener('click', (e) => {
       const current = document.documentElement.getAttribute('data-theme');
       this.profile.theme = current === 'dark' ? 'light' : 'dark';
       this.applyTheme();
-      this.render();
+      const btn = e.currentTarget as HTMLElement | null;
+      if (btn) {
+        btn.textContent = this.profile.theme === 'dark' ? 'LIGHT' : 'DARK';
+      }
     });
 
     // Nickname
@@ -1174,21 +1207,13 @@ class RevChatApp {
     // Search
     this.root.querySelector('#btn-toggle-search')?.addEventListener('click', () => {
       this.searchOpen = !this.searchOpen;
-      if (!this.searchOpen) this.searchQuery = '';
-      this.render();
-      if (this.searchOpen) {
-        (this.root.querySelector('#input-search') as HTMLInputElement | null)?.focus();
+      if (!this.searchOpen && this.searchQuery) {
+        this.searchQuery = '';
+        this.appendOrRefreshMessages();
       }
+      this.updateSearchBarDOM();
     });
-    this.root.querySelector('#btn-close-search')?.addEventListener('click', () => {
-      this.searchOpen = false;
-      this.searchQuery = '';
-      this.render();
-    });
-    this.root.querySelector('#input-search')?.addEventListener('input', (e) => {
-      this.searchQuery = (e.target as HTMLInputElement).value;
-      this.appendOrRefreshMessages();
-    });
+    this.updateSearchBarDOM();
 
     // Message Stream Scroll & Jump
     const stream = this.root.querySelector('#message-stream') as HTMLElement | null;
