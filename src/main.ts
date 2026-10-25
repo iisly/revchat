@@ -561,7 +561,7 @@ class RevChatApp {
           <div class="side-section" style="flex:1;border-bottom:none;overflow-y:auto;">
             <div class="sec-title">
               <span>Members (<span id="peer-count-side">${this.peers.length}</span>)</span>
-              <span class="badge" id="room-mode-badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
+              <span id="room-mode-badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
             </div>
             <div class="peer-list" id="peer-list-container">
               ${this.renderPeersListHtml()}
