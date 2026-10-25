@@ -561,7 +561,6 @@ class RevChatApp {
           <div class="side-section" style="flex:1;border-bottom:none;overflow-y:auto;">
             <div class="sec-title">
               <span>Members (<span id="peer-count-side">${this.peers.length}</span>)</span>
-              <span id="room-mode-badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
             </div>
             <div class="peer-list" id="peer-list-container">
               ${this.renderPeersListHtml()}
@@ -588,9 +587,7 @@ class RevChatApp {
         <main class="chat-pane">
           <header class="chat-topbar">
             <div class="topbar-left">
-              <button class="mobile-only" id="btn-open-drawer">
-                ≡ <span id="mobile-peer-count">${this.peers.length}</span>
-              </button>
+              <button class="mobile-only" id="btn-open-drawer">≡</button>
               <span class="room-badge" id="topbar-room-title">#${this.escapeHtml(this.roomId)}</span>
               <span class="badge ok" id="topbar-peer-badge">${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}</span>
             </div>
@@ -864,10 +861,6 @@ class RevChatApp {
     if (label) {
       label.textContent = this.getSignalingBadgeText();
     }
-    const modeBadge = this.root.querySelector('#room-mode-badge');
-    if (modeBadge) {
-      modeBadge.textContent = this.signalingState.isBeaconHost ? 'HOST' : 'MESH';
-    }
     this.updateTypingDOM();
   }
 
@@ -878,9 +871,6 @@ class RevChatApp {
     }
     const sideCount = this.root.querySelector('#peer-count-side');
     if (sideCount) sideCount.textContent = String(this.peers.length);
-
-    const mobileCount = this.root.querySelector('#mobile-peer-count');
-    if (mobileCount) mobileCount.textContent = String(this.peers.length);
 
     const topBadge = this.root.querySelector('#topbar-peer-badge');
     if (topBadge) {
