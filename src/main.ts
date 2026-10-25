@@ -522,7 +522,7 @@ class RevChatApp {
               <button class="small" id="btn-new-room">RANDOM</button>
             </div>
             <div class="field-row">
-              <input type="text" id="input-room" value="${this.escapeAttr(this.roomId)}" maxlength="32" placeholder="ROOM-CODE" />
+              <input type="text" id="input-room" value="${this.escapeAttr(this.roomId)}" maxlength="32" placeholder="Room Code" />
               <button class="primary" id="btn-join-room">JOIN</button>
             </div>
           </div>
@@ -533,7 +533,7 @@ class RevChatApp {
               <span>Follow Peer</span>
             </div>
             <div class="field-row">
-              <input type="text" id="input-direct-peer" placeholder="Enter Peer Code" />
+              <input type="text" id="input-direct-peer" placeholder="Peer Code" />
               <button id="btn-dial-peer">FOLLOW</button>
             </div>
             <div class="field-row" style="margin-top:6px;">
@@ -609,7 +609,7 @@ class RevChatApp {
             <textarea
               id="composer-input"
               rows="1"
-              placeholder="Message #${this.escapeAttr(this.roomId)} (Enter to send, Shift+Enter newline, /help)"
+              placeholder="Message #${this.escapeAttr(this.roomId)}"
             ></textarea>
             <button type="submit" class="primary send-btn">SEND</button>
           </form>
@@ -636,7 +636,7 @@ class RevChatApp {
     if (!this.searchOpen) return '';
     return `
       <div class="search-bar">
-        <input type="search" id="input-search" value="${this.escapeAttr(this.searchQuery)}" placeholder="Filter messages by text or author..." />
+        <input type="search" id="input-search" value="${this.escapeAttr(this.searchQuery)}" placeholder="Search messages..." />
         <button class="small" id="btn-close-search">CLOSE</button>
       </div>
     `;
