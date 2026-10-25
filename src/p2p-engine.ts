@@ -48,7 +48,11 @@ export class P2PEngine {
 
   private myPeerId: string;
   private personalPeer: Peer | null = null;
+  private personalPeerOpened = false;
+  private personalPeerRetryTimer: number | null = null;
+  private personalPeerOpenTimeout: number | null = null;
   private beaconPeer: Peer | null = null;
+  private beaconInitializing = false;
   private isBeaconHost = false;
   private signalingStatus: SignalingState['status'] = 'initializing';
   private signalingError?: string;
@@ -85,7 +89,6 @@ export class P2PEngine {
   public start(): void {
     this.initLocalBroadcast(this.roomId);
     this.initPersonalPeer();
-    this.initRoomBeaconOrJoin(this.roomId);
 
     this.pingTimer = window.setInterval(() => this.sendHeartbeats(), PING_INTERVAL_MS);
 
@@ -100,6 +103,8 @@ export class P2PEngine {
     this.destroyed = true;
     this.broadcastLeave();
     if (this.pingTimer) clearInterval(this.pingTimer);
+    if (this.personalPeerRetryTimer) clearTimeout(this.personalPeerRetryTimer);
+    if (this.personalPeerOpenTimeout) clearTimeout(this.personalPeerOpenTimeout);
     this.clearAllTyping();
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.onVisibilityOrOnline);
@@ -175,6 +180,7 @@ export class P2PEngine {
       }
       this.beaconPeer = null;
     }
+    this.beaconInitializing = false;
     this.isBeaconHost = false;
 
     if (this.broadcastChannel) {
@@ -206,7 +212,43 @@ export class P2PEngine {
     }
   }
 
+  private schedulePersonalPeerRetry(delayMs = 2000): void {
+    if (this.destroyed || this.personalPeerRetryTimer) return;
+    this.personalPeerRetryTimer = window.setTimeout(() => {
+      this.personalPeerRetryTimer = null;
+      if (this.destroyed) return;
+      if (!this.personalPeer || this.personalPeer.destroyed || !this.personalPeerOpened) {
+        this.initPersonalPeer();
+      } else if (this.personalPeer.disconnected) {
+        try {
+          this.personalPeer.reconnect();
+        } catch {
+          this.initPersonalPeer();
+        }
+      }
+    }, delayMs);
+  }
+
   private initPersonalPeer(): void {
+    if (this.destroyed) return;
+    if (this.personalPeerRetryTimer) {
+      clearTimeout(this.personalPeerRetryTimer);
+      this.personalPeerRetryTimer = null;
+    }
+    if (this.personalPeerOpenTimeout) {
+      clearTimeout(this.personalPeerOpenTimeout);
+      this.personalPeerOpenTimeout = null;
+    }
+    if (this.personalPeer) {
+      try {
+        this.personalPeer.destroy();
+      } catch {
+        // ignore
+      }
+      this.personalPeer = null;
+    }
+
+    this.personalPeerOpened = false;
     this.signalingStatus = 'initializing';
     this.emitSignalingState();
 
@@ -217,12 +259,35 @@ export class P2PEngine {
       });
       this.personalPeer = peer;
 
+      this.personalPeerOpenTimeout = window.setTimeout(() => {
+        this.personalPeerOpenTimeout = null;
+        if (this.destroyed || this.personalPeer !== peer || this.personalPeerOpened) return;
+        try {
+          peer.destroy();
+        } catch {
+          // ignore
+        }
+        this.personalPeer = null;
+        this.schedulePersonalPeerRetry(1000);
+      }, 7000);
+
       peer.on('open', (id) => {
+        if (this.destroyed || this.personalPeer !== peer) return;
+        if (this.personalPeerOpenTimeout) {
+          clearTimeout(this.personalPeerOpenTimeout);
+          this.personalPeerOpenTimeout = null;
+        }
+        this.personalPeerOpened = true;
         this.myPeerId = id;
         this.signalingStatus = 'ready';
         this.signalingError = undefined;
         this.emitSignalingState();
-        this.connectToRoomBeacon(this.roomId);
+
+        if (!this.isBeaconHost && !this.beaconPeer && !this.beaconInitializing) {
+          this.initRoomBeaconOrJoin(this.roomId);
+        } else if (!this.isBeaconHost) {
+          this.connectToRoomBeacon(this.roomId);
+        }
       });
 
       peer.on('connection', (conn) => {
@@ -239,42 +304,51 @@ export class P2PEngine {
       });
 
       peer.on('disconnected', () => {
-        if (this.destroyed) return;
-        this.signalingStatus = 'offline';
+        if (this.destroyed || this.personalPeer !== peer) return;
+        this.signalingStatus = 'initializing';
         this.emitSignalingState();
-        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+        if (this.personalPeerOpened && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
           try {
             peer.reconnect();
           } catch {
             // ignore
           }
         }
+        this.schedulePersonalPeerRetry(2500);
       });
 
       peer.on('error', (err: any) => {
+        if (this.destroyed || this.personalPeer !== peer) return;
         const errType = err?.type || '';
         if (errType === 'unavailable-id') {
           const suffix = Math.floor(100 + Math.random() * 899);
           this.myPeerId = `${PEER_PREFIX}${sanitizeId(this.profile.clientId).toLowerCase()}-${suffix}`;
-          try {
-            peer.destroy();
-          } catch {
-            // ignore
-          }
           this.initPersonalPeer();
           return;
         }
-        if (errType === 'peer-unavailable') return;
-        this.signalingError = err?.message || String(err);
-        if (this.signalingStatus === 'initializing') {
-          this.signalingStatus = 'offline';
+        if (errType === 'peer-unavailable') {
+          const msg = String(err?.message || '');
+          const beaconId = this.getBeaconIdForRoom(this.roomId);
+          if (msg.includes(beaconId) && !this.isBeaconHost && !this.beaconInitializing) {
+            this.initRoomBeaconOrJoin(this.roomId);
+          }
+          return;
         }
-        this.emitSignalingState();
+
+        this.signalingError = err?.message || String(err);
+        if (!this.personalPeerOpened || peer.destroyed) {
+          this.signalingStatus = 'initializing';
+          this.emitSignalingState();
+          this.schedulePersonalPeerRetry(2000);
+        } else {
+          this.schedulePersonalPeerRetry(2500);
+        }
       });
     } catch (err: any) {
-      this.signalingStatus = 'error';
-      this.signalingError = err?.message || 'Failed to initialize WebRTC Peer';
+      this.signalingStatus = 'initializing';
+      this.signalingError = err?.message || 'Retrying WebRTC signaling...';
       this.emitSignalingState();
+      this.schedulePersonalPeerRetry(2500);
     }
   }
 
@@ -284,6 +358,7 @@ export class P2PEngine {
   }
 
   private initRoomBeaconOrJoin(roomId: string): void {
+    if (this.destroyed || this.roomId !== roomId || this.beaconInitializing) return;
     const beaconId = this.getBeaconIdForRoom(roomId);
     if (this.beaconPeer) {
       try {
@@ -294,6 +369,7 @@ export class P2PEngine {
       this.beaconPeer = null;
     }
 
+    this.beaconInitializing = true;
     try {
       const beacon = new Peer(beaconId, {
         debug: 0,
@@ -302,8 +378,13 @@ export class P2PEngine {
       this.beaconPeer = beacon;
 
       beacon.on('open', () => {
-        if (this.destroyed || this.roomId !== roomId) {
-          beacon.destroy();
+        this.beaconInitializing = false;
+        if (this.destroyed || this.roomId !== roomId || this.beaconPeer !== beacon) {
+          try {
+            beacon.destroy();
+          } catch {
+            // ignore
+          }
           return;
         }
         this.isBeaconHost = true;
@@ -336,21 +417,25 @@ export class P2PEngine {
       });
 
       beacon.on('error', (err: any) => {
-        if ((err?.type || '') === 'unavailable-id') {
-          this.isBeaconHost = false;
-          try {
-            beacon.destroy();
-          } catch {
-            // ignore
-          }
-          if (this.beaconPeer === beacon) {
-            this.beaconPeer = null;
-          }
-          this.emitSignalingState();
+        this.beaconInitializing = false;
+        const errType = err?.type || '';
+        if (errType === 'peer-unavailable') return;
+        this.isBeaconHost = false;
+        try {
+          beacon.destroy();
+        } catch {
+          // ignore
+        }
+        if (this.beaconPeer === beacon) {
+          this.beaconPeer = null;
+        }
+        this.emitSignalingState();
+        if (errType === 'unavailable-id') {
           this.connectToRoomBeacon(roomId);
         }
       });
     } catch {
+      this.beaconInitializing = false;
       this.connectToRoomBeacon(roomId);
     }
   }
@@ -632,8 +717,10 @@ export class P2PEngine {
     this.rateLimiter.prune();
     this.pruneDeadConnections();
 
-    if (!this.personalPeer || this.personalPeer.destroyed) {
-      this.initPersonalPeer();
+    if (!this.personalPeer || this.personalPeer.destroyed || !this.personalPeerOpened) {
+      if (!this.personalPeerOpenTimeout) {
+        this.initPersonalPeer();
+      }
     } else if (this.personalPeer.disconnected) {
       try {
         this.personalPeer.reconnect();
@@ -642,18 +729,20 @@ export class P2PEngine {
       }
     }
 
-    if (this.isBeaconHost) {
-      if (!this.beaconPeer || this.beaconPeer.destroyed) {
-        this.initRoomBeaconOrJoin(this.roomId);
-      } else if (this.beaconPeer.disconnected) {
-        try {
-          this.beaconPeer.reconnect();
-        } catch {
+    if (this.signalingStatus === 'ready') {
+      if (this.isBeaconHost) {
+        if (!this.beaconPeer || this.beaconPeer.destroyed) {
           this.initRoomBeaconOrJoin(this.roomId);
+        } else if (this.beaconPeer.disconnected) {
+          try {
+            this.beaconPeer.reconnect();
+          } catch {
+            this.initRoomBeaconOrJoin(this.roomId);
+          }
         }
+      } else if (!this.beaconInitializing && this.beaconConnections.size === 0) {
+        this.connectToRoomBeacon(this.roomId);
       }
-    } else if (this.beaconConnections.size === 0) {
-      this.initRoomBeaconOrJoin(this.roomId);
     }
 
     this.sendHelloPacket();
@@ -964,6 +1053,19 @@ export class P2PEngine {
     if (this.destroyed) return;
     this.rateLimiter.prune();
     this.pruneDeadConnections();
+
+    if (this.signalingStatus !== 'ready' && !this.personalPeerOpenTimeout && !this.personalPeerRetryTimer) {
+      this.schedulePersonalPeerRetry(500);
+    } else if (
+      this.signalingStatus === 'ready' &&
+      !this.isBeaconHost &&
+      !this.beaconInitializing &&
+      this.beaconConnections.size === 0 &&
+      this.peerConnections.size === 0
+    ) {
+      this.connectToRoomBeacon(this.roomId);
+    }
+
     const now = Date.now();
     this.broadcastPacket('PING', { sentAt: now }, 1);
 
