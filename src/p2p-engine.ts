@@ -24,7 +24,7 @@ const ROOM_BEACON_PREFIX = 'revchat-r-';
 const SEEN_PACKET_LIMIT = 1500;
 const PING_INTERVAL_MS = 4000;
 const PEER_TIMEOUT_MS = 12000;
-const OUTBOX_TTL_MS = 20000;
+const OUTBOX_TTL_MS = 15000;
 
 const RTC_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
@@ -66,7 +66,6 @@ export class P2PEngine {
   private pendingOutbox = new Map<string, { msg: ChatMessage; createdAt: number }>();
 
   private pingTimer: number | null = null;
-  private beaconCheckTimer: number | null = null;
   private typingCleanupTimer: number | null = null;
   private destroyed = false;
 
@@ -91,7 +90,6 @@ export class P2PEngine {
 
     this.pingTimer = window.setInterval(() => this.sendHeartbeats(), PING_INTERVAL_MS);
     this.typingCleanupTimer = window.setInterval(() => this.cleanupTyping(), 1000);
-    this.beaconCheckTimer = window.setInterval(() => this.ensureRoomConnectivity(), 5000);
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.onVisibilityOrOnline);
@@ -105,7 +103,6 @@ export class P2PEngine {
     this.broadcastLeave();
     if (this.pingTimer) clearInterval(this.pingTimer);
     if (this.typingCleanupTimer) clearInterval(this.typingCleanupTimer);
-    if (this.beaconCheckTimer) clearInterval(this.beaconCheckTimer);
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.onVisibilityOrOnline);
       document.removeEventListener('visibilitychange', this.onVisibilityOrOnline);
@@ -554,7 +551,10 @@ export class P2PEngine {
       this.handleIncomingPacket(packet, 'peerjs-mesh', conn);
     });
 
+    let closedHandled = false;
     const handleClose = () => {
+      if (closedHandled) return;
+      closedHandled = true;
       if (isBeaconChannel) {
         this.beaconConnections.delete(remotePeerId);
       } else {
@@ -564,7 +564,27 @@ export class P2PEngine {
           this.emitPeersChange();
         }
       }
+      if (!this.destroyed) {
+        this.ensureRoomConnectivity();
+      }
     };
+
+    const bindPcStateListeners = () => {
+      const pc = (conn as any).peerConnection as RTCPeerConnection | undefined;
+      if (!pc) return;
+      const checkState = () => {
+        if (!this.isConnAlive(conn)) {
+          handleClose();
+        }
+      };
+      pc.addEventListener('connectionstatechange', checkState);
+      pc.addEventListener('iceconnectionstatechange', checkState);
+    };
+
+    conn.on('open', () => {
+      bindPcStateListeners();
+    });
+    bindPcStateListeners();
 
     conn.on('close', handleClose);
     conn.on('error', handleClose);
@@ -967,7 +987,12 @@ export class P2PEngine {
     this.pruneDeadConnections();
     const now = Date.now();
     this.broadcastPacket('PING', { sentAt: now }, 1);
-    this.flushPendingOutbox();
+
+    for (const [id, entry] of this.pendingOutbox.entries()) {
+      if (now - entry.createdAt > OUTBOX_TTL_MS || entry.msg.roomId !== this.roomId) {
+        this.pendingOutbox.delete(id);
+      }
+    }
 
     let changed = false;
     for (const [id, peer] of this.peers.entries()) {
