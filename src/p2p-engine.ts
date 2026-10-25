@@ -26,6 +26,11 @@ const PING_INTERVAL_MS = 4000;
 const PEER_TIMEOUT_MS = 12000;
 const OUTBOX_TTL_MS = 20000;
 
+const RTC_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.l.google.com:19302' },
+];
+
 export interface P2PEngineCallbacks {
   onSignalingChange: (state: SignalingState) => void;
   onPeersChange: (peers: PeerInfo[]) => void;
@@ -211,7 +216,10 @@ export class P2PEngine {
     this.emitSignalingState();
 
     try {
-      const peer = new Peer(this.myPeerId, { debug: 0 });
+      const peer = new Peer(this.myPeerId, {
+        debug: 0,
+        config: { iceServers: RTC_ICE_SERVERS },
+      });
       this.personalPeer = peer;
 
       peer.on('open', (id) => {
@@ -294,7 +302,10 @@ export class P2PEngine {
     }
 
     try {
-      const beacon = new Peer(beaconId, { debug: 0 });
+      const beacon = new Peer(beaconId, {
+        debug: 0,
+        config: { iceServers: RTC_ICE_SERVERS },
+      });
       this.beaconPeer = beacon;
 
       beacon.on('open', () => {
