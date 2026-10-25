@@ -196,11 +196,12 @@ class RevChatApp {
   }
 
   private applyTheme(): void {
-    let effective = this.profile.theme;
-    if (effective === 'auto') {
-      effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    if (this.profile.theme === 'auto') {
+      this.profile.theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
     }
-    document.documentElement.setAttribute('data-theme', effective);
+    document.documentElement.setAttribute('data-theme', this.profile.theme);
   }
 
   private pushMessageToMemory(msg: ChatMessage): boolean {
