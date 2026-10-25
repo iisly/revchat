@@ -198,7 +198,6 @@ export class P2PEngine {
         if (!packet || packet.senderId === this.myPeerId) return;
         if (packet.roomId !== this.roomId) return;
         if (!this.rateLimiter.allow(packet.senderId)) return;
-        this.upsertPeer(packet.senderId, packet.senderName, 'local-broadcast');
         this.handleIncomingPacket(packet, 'local-broadcast');
       };
       this.sendHelloPacket();
@@ -545,16 +544,10 @@ export class P2PEngine {
 
       if (packet.roomId !== this.roomId) return;
 
-      if (packet.senderId && packet.senderId !== this.myPeerId && !isBeaconChannel) {
+      if (packet.type !== 'LEAVE' && packet.senderId && packet.senderId !== this.myPeerId && !isBeaconChannel) {
         this.peerConnections.set(packet.senderId, conn);
       }
 
-      this.upsertPeer(
-        packet.senderId,
-        packet.senderName,
-        'peerjs-mesh',
-        Boolean(packet.payload?.isBeaconHost)
-      );
       this.handleIncomingPacket(packet, 'peerjs-mesh', conn);
     });
 
@@ -747,6 +740,15 @@ export class P2PEngine {
     if (packet.roomId !== this.roomId) return;
     if (this.markPacketSeen(packet.packetId)) return;
 
+    if (packet.type !== 'LEAVE') {
+      this.upsertPeer(
+        packet.senderId,
+        packet.senderName,
+        transport,
+        Boolean(packet.payload?.isBeaconHost)
+      );
+    }
+
     if (packet.ttl > 1) {
       const relayed: P2PPacket = { ...packet, ttl: packet.ttl - 1 };
       this.dispatchPacketToAll(relayed, sourceConn);
@@ -873,6 +875,24 @@ export class P2PEngine {
       }
 
       case 'LEAVE': {
+        const peerConn = this.peerConnections.get(packet.senderId);
+        if (peerConn) {
+          try {
+            peerConn.close();
+          } catch {
+            // ignore
+          }
+          this.peerConnections.delete(packet.senderId);
+        }
+        const beaconConn = this.beaconConnections.get(packet.senderId);
+        if (beaconConn) {
+          try {
+            beaconConn.close();
+          } catch {
+            // ignore
+          }
+          this.beaconConnections.delete(packet.senderId);
+        }
         const existing = this.peers.get(packet.senderId);
         if (existing) {
           this.peers.delete(packet.senderId);
