@@ -223,29 +223,6 @@ button.small {
   user-select: all;
 }
 
-.chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.chip {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  cursor: pointer;
-}
-
-.chip.active {
-  background: var(--fg);
-  color: var(--bg);
-  border-color: var(--fg);
-  font-weight: 600;
-}
-
 /* Peer List */
 .peer-list {
   display: flex;
@@ -613,21 +590,6 @@ button.small {
   width: 200px;
   height: 200px;
   display: block;
-}
-
-.step-block {
-  border: 1px solid var(--border);
-  padding: 10px;
-  background: var(--bg-alt);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.step-title {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 12px;
 }
 
 .toast {

@@ -1,32 +1,33 @@
-# revchat — Minimal P2P Chat Application
+# revchat
 
-A lightweight, utilitarian, peer-to-peer (P2P) chatting web application engineered for both **Desktop (Web View)** and **Mobile View**.
+Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
 
-## Key Features
+## Features
 
-- **Multi-Peer Room Mesh + Auto Host Failover**:
-  - Enter any room code (e.g., `LOBBY` or `ROOM-4X9K`) or click **+ RANDOM**.
-  - The first peer in a room acts as the WebRTC Rendezvous Beacon (`revchat-r-<room>`), introducing incoming peers so every participant automatically forms a **direct full-mesh WebRTC DataChannel** network.
-  - If the room coordinator leaves, remaining peers maintain their mesh connections and automatically elect the next coordinator.
-- **3-Layer Connectivity Engine**:
-  1. **WebRTC Mesh via PeerJS (`WEBRTC`)**: Works across networks using room codes, direct peer codes, shareable links, or QR codes.
-  2. **Instant Local Tab/Window Mesh (`LOCAL`)**: Uses `BroadcastChannel` + WebRTC so multiple tabs on the same browser discover and message each other in `<1ms` with zero config.
-  3. **Serverless Manual WebRTC SDP (`SDP`)**: 100% zero-server fallback using raw `RTCPeerConnection` Offer/Answer token exchange.
-- **Rich Chat Capabilities**:
-  - Live per-peer RTT latency (`ms`) via `PING`/`PONG` heartbeats
-  - Delivery acknowledgments (`✓` sent, `✓✓ N` acknowledged by `N` peers)
-  - Late-joiner recent history synchronization
-  - Private 1:1 direct messages (`[DM]`) inside or across rooms
-  - Message reply quotes, live typing indicators, instant message search, and JSON transcript export
-  - Slash commands: `/nick <name>`, `/room <code>`, `/me <action>`, `/shrug`, `/clear`, `/help`
-- **Desktop & Mobile Ergonomics**:
-  - **Web View (`>= 768px`)**: Persistent 2-column split view with full control panel and live peer telemetry.
-  - **Mobile View (`< 768px`)**: Dynamic viewport (`visualViewport` height tracking so soft keyboards never cover the composer or header), slide-over room/peer drawer, `16px` inputs (prevents iOS auto-zoom), native Web Share API (`navigator.share`), and scannable SVG QR codes.
+- **Direct P2P Mesh**: Connect via room codes (`LOBBY`), peer dial codes, shareable links, or QR codes.
+- **Zero Storage**: No database, no chat logs on servers, and no `localStorage` persistence—everything lives strictly in memory and disappears when you close the tab.
+- **Desktop & Mobile Ready**: Clean split layout on desktop and adaptive viewport drawer on mobile.
 
-## Quick Start
+## Slash Commands
+
+| Command | Description |
+| :--- | :--- |
+| `/roll [max]` | Roll a dice (default `1-100`) |
+| `/coin` | Flip a coin (`HEADS` / `TAILS`) |
+| `/rps <r\|p\|s>` | Play Rock-Paper-Scissors |
+| `/8ball <question>` | Ask the Magic 8-Ball |
+| `/pick a, b, c` | Randomly pick one option |
+| `/shout <text>` | Send big bold announcement |
+| `/flip` / `/unflip` | Table flip / put table back |
+| `/shrug` / `/lenny` | Append classic ASCII emotes |
+| `/me <action>` | Send an action message |
+| `/nick <name>` | Change your nickname |
+| `/room <code>` | Switch to another room |
+| `/clear` | Clear local chat screen |
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
-

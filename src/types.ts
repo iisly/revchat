@@ -39,7 +39,6 @@ export type PacketType =
   | 'TYPING'
   | 'PING'
   | 'PONG'
-  | 'HISTORY_SYNC'
   | 'NICK_CHANGE'
   | 'LEAVE';
 

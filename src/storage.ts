@@ -1,7 +1,5 @@
 import { UserProfile } from './types';
 
-const PROFILE_KEY = 'revchat_profile_v1';
-
 function randomId(len = 6): string {
   const chars = '23456789abcdefghjkmnpqrstuvwxyz';
   let out = '';
@@ -21,8 +19,7 @@ export function generateUUID(): string {
 }
 
 export function generateRoomCode(): string {
-  const p1 = randomId(4).toUpperCase();
-  return `ROOM-${p1}`;
+  return `ROOM-${randomId(4).toUpperCase()}`;
 }
 
 export function normalizeRoomId(input: string): string {
@@ -35,37 +32,18 @@ export function normalizeRoomId(input: string): string {
   return cleaned.slice(0, 32) || 'LOBBY';
 }
 
-export function loadUserProfile(): UserProfile {
+export function createSessionProfile(): UserProfile {
   try {
-    const raw = localStorage.getItem(PROFILE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<UserProfile>;
-      if (parsed.clientId && parsed.nickname) {
-        return {
-          clientId: parsed.clientId,
-          nickname: parsed.nickname.slice(0, 24),
-          theme: parsed.theme || 'auto',
-        };
-      }
-    }
+    localStorage.clear();
+    sessionStorage.clear();
   } catch {
     // ignore storage errors
   }
 
   const clientId = randomId(6);
-  const defaultProfile: UserProfile = {
+  return {
     clientId,
     nickname: `peer-${clientId.slice(0, 4)}`,
     theme: 'auto',
   };
-  saveUserProfile(defaultProfile);
-  return defaultProfile;
-}
-
-export function saveUserProfile(profile: UserProfile): void {
-  try {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  } catch {
-    // ignore
-  }
 }

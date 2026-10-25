@@ -1,13 +1,29 @@
 import { P2PEngine } from './p2p-engine';
 import { generateQrSvg } from './qrcode';
+import { MAX_NICKNAME_LENGTH, sanitizeString } from './security';
 import {
+  createSessionProfile,
   generateRoomCode,
   generateUUID,
-  loadUserProfile,
   normalizeRoomId,
-  saveUserProfile,
 } from './storage';
 import { ChatMessage, PeerInfo, SignalingState, UserProfile } from './types';
+
+const MAX_MEMORY_MESSAGES = 200;
+
+const EIGHT_BALL_ANSWERS = [
+  'It is certain.',
+  'Without a doubt.',
+  'Yes — definitely.',
+  'Most likely.',
+  'Outlook good.',
+  'Ask again later.',
+  'Better not tell you now.',
+  'Cannot predict now.',
+  'Don’t count on it.',
+  'My reply is no.',
+  'Very doubtful.',
+];
 
 class RevChatApp {
   private root: HTMLElement;
@@ -32,14 +48,14 @@ class RevChatApp {
   private isAtBottom = true;
   private unreadWhileScrolled = 0;
 
-  // Typing debounce
+  // Timers
   private lastTypingSentAt = 0;
   private stopTypingTimer: number | null = null;
   private toastTimer: number | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
-    this.profile = loadUserProfile();
+    this.profile = createSessionProfile();
     this.applyTheme();
 
     const initialRoom = this.parseRoomFromUrl() || 'LOBBY';
@@ -54,8 +70,19 @@ class RevChatApp {
     };
 
     this.setupVisualViewportFix();
+    this.setupLifecycleCleanup();
     this.render();
     this.initEngine();
+  }
+
+  private setupLifecycleCleanup(): void {
+    const cleanup = () => {
+      if (this.engine) {
+        this.engine.destroy();
+      }
+    };
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('beforeunload', cleanup);
   }
 
   private parseRoomFromUrl(): string | null {
@@ -73,6 +100,7 @@ class RevChatApp {
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('room', roomId);
+      url.searchParams.delete('peer');
       window.history.replaceState({}, '', url.toString());
     } catch {
       // ignore
@@ -115,6 +143,18 @@ class RevChatApp {
     document.documentElement.setAttribute('data-theme', effective);
   }
 
+  private pushMessageToMemory(msg: ChatMessage): void {
+    if (this.messageIds.has(msg.id)) return;
+    this.messageIds.add(msg.id);
+    this.messages.push(msg);
+    if (this.messages.length > MAX_MEMORY_MESSAGES) {
+      const removed = this.messages.shift();
+      if (removed) {
+        this.messageIds.delete(removed.id);
+      }
+    }
+  }
+
   private initEngine(): void {
     this.engine = new P2PEngine(this.profile, this.roomId, {
       onSignalingChange: (state) => {
@@ -124,7 +164,7 @@ class RevChatApp {
           const params = new URLSearchParams(window.location.search);
           const peerToDial = params.get('peer');
           if (peerToDial && peerToDial !== state.myPeerId) {
-            this.engine.connectToDirectPeer(peerToDial);
+            this.engine.connectToDirectPeer(peerToDial, true);
           }
         }
         this.updateStatusDOM();
@@ -133,13 +173,8 @@ class RevChatApp {
         this.peers = peers;
         this.updatePeersDOM();
       },
-      onChatMessage: (msg, isHistorySync) => {
-        if (this.messageIds.has(msg.id)) return;
-        this.messageIds.add(msg.id);
-        this.messages.push(msg);
-        if (isHistorySync) {
-          this.messages.sort((a, b) => a.timestamp - b.timestamp);
-        }
+      onChatMessage: (msg) => {
+        this.pushMessageToMemory(msg);
         this.appendOrRefreshMessages();
       },
       onMessageAck: (messageId, ackPeerId) => {
@@ -167,11 +202,19 @@ class RevChatApp {
           system: true,
           ackedBy: [],
         };
-        this.messages.push(sysMsg);
+        this.pushMessageToMemory(sysMsg);
         this.appendOrRefreshMessages();
       },
-      getRecentRoomMessages: () => {
-        return this.messages.filter((m) => !m.system && !m.targetPeerId);
+      onRoomFollowed: (newRoomId, peerNickname) => {
+        this.roomId = newRoomId;
+        this.syncUrlWithRoom(this.roomId);
+        this.replyTo = undefined;
+        this.whisperTarget = undefined;
+        this.mobileDrawerOpen = false;
+        this.messages = [];
+        this.messageIds.clear();
+        this.render();
+        this.showToast(`Joined ${peerNickname} in #${newRoomId}`);
       },
     });
 
@@ -215,53 +258,120 @@ class RevChatApp {
     const text = rawInput.trim();
     if (!text) return;
 
-    if (text.startsWith('/')) {
-      const parts = text.split(' ');
-      const cmd = parts[0].toLowerCase();
-      const argStr = parts.slice(1).join(' ').trim();
-
-      if (cmd === '/help') {
-        this.activeModal = 'help';
-        this.renderModal();
-        return;
-      }
-      if (cmd === '/clear') {
-        this.messages = [];
-        this.messageIds.clear();
-        this.appendOrRefreshMessages();
-        this.showToast('Cleared chat view');
-        return;
-      }
-      if (cmd === '/nick' && argStr) {
-        this.profile.nickname = argStr.slice(0, 24);
-        saveUserProfile(this.profile);
-        this.engine.updateProfile(this.profile);
-        this.render();
-        this.showToast(`Nickname set to ${this.profile.nickname}`);
-        return;
-      }
-      if (cmd === '/room') {
-        const nextRoom = argStr || generateRoomCode();
-        this.switchRoom(nextRoom);
-        return;
-      }
-      if (cmd === '/shrug') {
-        this.dispatchUserChat(`${argStr} ¯\\_(ツ)_/¯`.trim());
-        return;
-      }
-      if (cmd === '/me' && argStr) {
-        this.dispatchUserChat(`* ${this.profile.nickname} ${argStr} *`);
-        return;
-      }
+    if (text.startsWith('/') && this.executeSlashCommand(text)) {
+      return;
     }
 
     this.dispatchUserChat(text);
   }
 
+  private executeSlashCommand(text: string): boolean {
+    const parts = text.split(' ');
+    const cmd = parts[0].toLowerCase();
+    const argStr = parts.slice(1).join(' ').trim();
+    const nick = this.profile.nickname;
+
+    switch (cmd) {
+      case '/help': {
+        this.activeModal = 'help';
+        this.renderModal();
+        return true;
+      }
+      case '/clear': {
+        this.messages = [];
+        this.messageIds.clear();
+        this.appendOrRefreshMessages();
+        this.showToast('Cleared chat view');
+        return true;
+      }
+      case '/nick': {
+        const cleanNick = sanitizeString(argStr, MAX_NICKNAME_LENGTH).trim();
+        if (!cleanNick) {
+          this.showToast('Usage: /nick <name>');
+          return true;
+        }
+        this.profile.nickname = cleanNick;
+        this.engine.updateProfile(this.profile);
+        this.render();
+        this.showToast(`Nickname set to ${this.profile.nickname}`);
+        return true;
+      }
+      case '/room': {
+        this.switchRoom(argStr || generateRoomCode());
+        return true;
+      }
+      case '/roll': {
+        const max = Math.min(1_000_000, Math.max(2, parseInt(argStr, 10) || 100));
+        const val = Math.floor(Math.random() * max) + 1;
+        this.dispatchUserChat(`🎲 ${nick} rolled ${val} (1-${max})`);
+        return true;
+      }
+      case '/coin': {
+        const side = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
+        this.dispatchUserChat(`🪙 ${nick} flipped a coin → ${side}!`);
+        return true;
+      }
+      case '/rps': {
+        const hands = ['✊ ROCK', '✋ PAPER', '✌️ SCISSORS'];
+        const pick = hands[Math.floor(Math.random() * hands.length)];
+        this.dispatchUserChat(`${nick} threw ${pick}!`);
+        return true;
+      }
+      case '/8ball': {
+        if (!argStr) {
+          this.showToast('Usage: /8ball <question>');
+          return true;
+        }
+        const ans = EIGHT_BALL_ANSWERS[Math.floor(Math.random() * EIGHT_BALL_ANSWERS.length)];
+        this.dispatchUserChat(`🎱 Q: ${argStr} → ${ans}`);
+        return true;
+      }
+      case '/pick': {
+        const items = (argStr.includes(',') ? argStr.split(',') : argStr.split(/\s+/))
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (items.length < 2) {
+          this.showToast('Usage: /pick option1, option2, ...');
+          return true;
+        }
+        const chosen = items[Math.floor(Math.random() * items.length)];
+        this.dispatchUserChat(`🎯 ${nick} picked: ${chosen} (from ${items.join(', ')})`);
+        return true;
+      }
+      case '/shout': {
+        if (!argStr) return true;
+        this.dispatchUserChat(`📢 [SHOUT] ${argStr.toUpperCase()}`);
+        return true;
+      }
+      case '/me': {
+        if (!argStr) return true;
+        this.dispatchUserChat(`* ${nick} ${argStr} *`);
+        return true;
+      }
+      case '/shrug': {
+        this.dispatchUserChat(`${argStr} ¯\\_(ツ)_/¯`.trim());
+        return true;
+      }
+      case '/flip': {
+        this.dispatchUserChat(`${argStr} (╯°□°）╯︵ ┻━┻`.trim());
+        return true;
+      }
+      case '/unflip': {
+        this.dispatchUserChat(`${argStr} ┬─┬ ノ( ゜-゜ノ)`.trim());
+        return true;
+      }
+      case '/lenny': {
+        this.dispatchUserChat(`${argStr} ( ͡° ͜ʖ ͡°)`.trim());
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
   private dispatchUserChat(text: string): void {
     const msg = this.engine.sendChatMessage(text, this.replyTo, this.whisperTarget);
-    this.messageIds.add(msg.id);
-    this.messages.push(msg);
+    this.pushMessageToMemory(msg);
 
     this.replyTo = undefined;
     this.engine.sendTyping(false);
@@ -328,7 +438,7 @@ class RevChatApp {
               <span>Connect Peers</span>
             </div>
             <div class="field-row">
-              <input type="text" id="input-direct-peer" placeholder="Peer Code (e.g. 8F9A2B)" />
+              <input type="text" id="input-direct-peer" placeholder="Peer Code (Join their room)" />
               <button id="btn-dial-peer">DIAL</button>
             </div>
             <div class="field-row" style="margin-top:6px;">
@@ -465,7 +575,8 @@ class RevChatApp {
           <ul>
             <li><b>Same Browser:</b> Open this URL in a second tab for instant local P2P chat.</li>
             <li><b>Mobile / Remote:</b> Tap <b>QR / INVITE LINK</b> to scan QR code or share room link.</li>
-            <li><b>Slash Commands:</b> <code>/nick name</code>, <code>/room code</code>, <code>/clear</code>, <code>/help</code></li>
+            <li><b>Direct Join:</b> Enter a friend's Peer Code in <b>DIAL</b> to jump into their room.</li>
+            <li><b>Commands:</b> <code>/roll</code>, <code>/coin</code>, <code>/rps</code>, <code>/8ball</code>, <code>/pick</code>, <code>/help</code></li>
           </ul>
         </div>
       `;
@@ -601,7 +712,6 @@ class RevChatApp {
 
     const topBadge = this.root.querySelector('#topbar-peer-badge');
     if (topBadge) {
-      topBadge.textContent = `${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}}`;
       topBadge.textContent = `${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}`;
     }
   }
@@ -717,8 +827,8 @@ class RevChatApp {
                   <code class="code-pill">${this.escapeHtml(this.roomId)}</code>
                 </div>
                 <div class="kv-line">
-                  <span>Your Direct Peer ID:</span>
-                  <code class="code-pill">${this.escapeHtml(this.signalingState.myPeerId)}</code>
+                  <span>My Peer Code:</span>
+                  <code class="code-pill">${this.escapeHtml(this.profile.clientId.toUpperCase())}</code>
                 </div>
               </div>
             </div>
@@ -764,23 +874,29 @@ class RevChatApp {
               <div class="step-block">
                 <div class="step-title">How P2P Connectivity Works</div>
                 <div style="font-size:12px;">
-                  1. <b>Room Code Mesh:</b> Peers on the same Room Code discover each other automatically via WebRTC rendezvous and form a direct P2P mesh.<br/>
-                  2. <b>Same-Device Instant Mesh:</b> Multiple tabs in the same browser connect in &lt;1ms via BroadcastChannel + WebRTC.
+                  1. <b>Room Code:</b> Join the same Room Code (or scan QR) to form a direct WebRTC mesh.<br/>
+                  2. <b>DIAL Peer Code:</b> Enter a friend's Peer Code and click DIAL to automatically jump into their current room.<br/>
+                  3. <b>Zero Persistence:</b> Nothing is saved to disk or storage; closing the tab destroys your session and messages immediately.
                 </div>
               </div>
               <div class="step-block">
                 <div class="step-title">Slash Commands</div>
                 <div style="font-family:var(--font-mono);font-size:12px;display:flex;flex-direction:column;gap:4px;">
                   <div><code>/nick &lt;name&gt;</code> — Change your display nickname</div>
-                  <div><code>/room &lt;code&gt;</code> — Switch to or create a room</div>
-                  <div><code>/me &lt;action&gt;</code> — Send an action message</div>
-                  <div><code>/shrug</code> — Append ¯\\_(ツ)_/¯</div>
-                  <div><code>/clear</code> — Clear current chat view</div>
-                  <div><code>/help</code> — Show this dialog</div>
+                  <div><code>/room [code]</code> — Switch room (or random room if empty)</div>
+                  <div><code>/roll [max]</code> — Roll a dice (default 1–100)</div>
+                  <div><code>/coin</code> — Flip a coin (HEADS / TAILS)</div>
+                  <div><code>/rps</code> — Throw Rock / Paper / Scissors</div>
+                  <div><code>/8ball &lt;q&gt;</code> — Ask the Magic 8-Ball a question</div>
+                  <div><code>/pick a, b, c</code> — Randomly pick one item from a list</div>
+                  <div><code>/shout &lt;msg&gt;</code> — Send a loud uppercase announcement</div>
+                  <div><code>/me &lt;action&gt;</code> — Send an action status message</div>
+                  <div><code>/shrug</code> <code>/flip</code> <code>/unflip</code> <code>/lenny</code> — ASCII emotes</div>
+                  <div><code>/clear</code> — Clear current chat screen</div>
                 </div>
               </div>
               <div style="display:flex;gap:6px;justify-content:flex-end;">
-                <button id="btn-modal-clear">CLEAR ROOM</button>
+                <button id="btn-modal-clear">CLEAR CHAT</button>
               </div>
             </div>
           </div>
@@ -829,7 +945,6 @@ class RevChatApp {
     this.root.querySelector('#btn-theme')?.addEventListener('click', () => {
       const current = document.documentElement.getAttribute('data-theme');
       this.profile.theme = current === 'dark' ? 'light' : 'dark';
-      saveUserProfile(this.profile);
       this.applyTheme();
       this.render();
     });
@@ -837,10 +952,9 @@ class RevChatApp {
     // Nickname
     const saveNick = () => {
       const input = this.root.querySelector('#input-nick') as HTMLInputElement | null;
-      const val = input?.value.trim();
+      const val = sanitizeString(input?.value, MAX_NICKNAME_LENGTH).trim();
       if (val) {
-        this.profile.nickname = val.slice(0, 24);
-        saveUserProfile(this.profile);
+        this.profile.nickname = val;
         this.engine.updateProfile(this.profile);
         this.showToast(`Saved nickname: ${this.profile.nickname}`);
       }
@@ -877,17 +991,17 @@ class RevChatApp {
       this.switchRoom(generateRoomCode());
     });
 
-    // Direct Peer Dial
+    // Direct Peer Dial (Follows target peer into their room)
     const dialPeer = () => {
       const input = this.root.querySelector('#input-direct-peer') as HTMLInputElement | null;
       const val = input?.value.trim() || '';
       if (!val) return;
-      const ok = this.engine.connectToDirectPeer(val);
+      const ok = this.engine.connectToDirectPeer(val, true);
       if (ok) {
         if (input) input.value = '';
         this.mobileDrawerOpen = false;
         this.render();
-        this.showToast(`Dialing peer ${val}...`);
+        this.showToast(`Dialing ${val} to join their room...`);
       } else {
         this.showToast('Could not dial peer (check code)');
       }

@@ -27,11 +27,11 @@ const PING_INTERVAL_MS = 4000;
 export interface P2PEngineCallbacks {
   onSignalingChange: (state: SignalingState) => void;
   onPeersChange: (peers: PeerInfo[]) => void;
-  onChatMessage: (msg: ChatMessage, isHistorySync: boolean) => void;
+  onChatMessage: (msg: ChatMessage) => void;
   onMessageAck: (messageId: string, ackPeerId: string) => void;
   onTypingChange: (typingPeers: { peerId: string; nickname: string }[]) => void;
   onSystemLog: (text: string) => void;
-  getRecentRoomMessages: (roomId: string) => ChatMessage[];
+  onRoomFollowed: (newRoomId: string, peerNickname: string) => void;
 }
 
 export class P2PEngine {
@@ -50,6 +50,7 @@ export class P2PEngine {
   private beaconConnections = new Map<string, DataConnection>();
   private broadcastChannel: BroadcastChannel | null = null;
   private peers = new Map<string, PeerInfo>();
+  private dialedPeerToFollow: string | null = null;
 
   private seenPackets = new Set<string>();
   private seenPacketQueue: string[] = [];
@@ -79,6 +80,7 @@ export class P2PEngine {
   }
 
   public destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
     this.broadcastLeave();
     if (this.pingTimer) clearInterval(this.pingTimer);
@@ -124,8 +126,9 @@ export class P2PEngine {
     this.initRoomBeaconOrJoin(this.roomId);
   }
 
-  private teardownRoomConnections(): void {
+  private teardownRoomConnections(preserveConn?: DataConnection): void {
     for (const conn of this.peerConnections.values()) {
+      if (conn === preserveConn) continue;
       try {
         conn.close();
       } catch {
@@ -135,6 +138,7 @@ export class P2PEngine {
     this.peerConnections.clear();
 
     for (const conn of this.beaconConnections.values()) {
+      if (conn === preserveConn) continue;
       try {
         conn.close();
       } catch {
@@ -171,6 +175,7 @@ export class P2PEngine {
       bc.onmessage = (ev) => {
         const packet = validateIncomingPacket(ev.data);
         if (!packet || packet.senderId === this.myPeerId) return;
+        if (packet.roomId !== this.roomId) return;
         if (!this.rateLimiter.allow(packet.senderId)) return;
         this.upsertPeer(packet.senderId, packet.senderName, 'local-broadcast');
         this.handleIncomingPacket(packet, 'local-broadcast');
@@ -336,7 +341,7 @@ export class P2PEngine {
     }
   }
 
-  public connectToDirectPeer(targetInput: string): boolean {
+  public connectToDirectPeer(targetInput: string, followRoom = true): boolean {
     const cleaned = sanitizeId(targetInput).toLowerCase();
     if (!cleaned) return false;
     const fullPeerId = cleaned.startsWith(PEER_PREFIX)
@@ -346,7 +351,24 @@ export class P2PEngine {
       : `${PEER_PREFIX}${cleaned}`;
 
     if (fullPeerId === this.myPeerId) return false;
-    if (this.peerConnections.has(fullPeerId)) return true;
+    if (followRoom) {
+      this.dialedPeerToFollow = fullPeerId;
+    }
+    if (this.peerConnections.has(fullPeerId)) {
+      if (followRoom) {
+        const existingConn = this.peerConnections.get(fullPeerId);
+        if (existingConn && existingConn.open) {
+          this.safeSendConn(
+            existingConn,
+            this.createPacket('HELLO', {
+              nickname: this.profile.nickname,
+              isBeaconHost: this.isBeaconHost,
+            })
+          );
+        }
+      }
+      return true;
+    }
     if (this.peerConnections.size >= MAX_PEERS_IN_ROOM) return false;
     if (!this.personalPeer || this.personalPeer.destroyed) return false;
 
@@ -360,11 +382,44 @@ export class P2PEngine {
         },
       });
       this.setupDataConnection(conn, false);
-      this.callbacks.onSystemLog(`Dialing peer ${fullPeerId}...`);
+      if (followRoom) {
+        this.callbacks.onSystemLog(`Dialing peer ${fullPeerId}...`);
+      }
       return true;
     } catch {
       return false;
     }
+  }
+
+  private followPeerIntoRoom(
+    targetRoomId: string,
+    peerNickname: string,
+    preserveConn: DataConnection,
+    remotePeerId: string
+  ): void {
+    const normalized = normalizeRoomId(targetRoomId);
+    if (normalized === this.roomId) return;
+
+    this.broadcastLeave();
+    this.teardownRoomConnections(preserveConn);
+    this.roomId = normalized;
+    this.peers.clear();
+    this.typingMap.clear();
+    this.peerConnections.set(remotePeerId, preserveConn);
+
+    this.callbacks.onRoomFollowed(this.roomId, peerNickname);
+    this.emitPeersChange();
+    this.emitTypingChange();
+    this.emitSignalingState();
+
+    this.initLocalBroadcast(this.roomId);
+    this.initRoomBeaconOrJoin(this.roomId);
+
+    const helloPacket = this.createPacket('HELLO', {
+      nickname: this.profile.nickname,
+      isBeaconHost: this.isBeaconHost,
+    });
+    this.safeSendConn(preserveConn, helloPacket);
   }
 
   private setupDataConnection(conn: DataConnection, isBeaconChannel: boolean): void {
@@ -385,6 +440,14 @@ export class P2PEngine {
         this.peerConnections.set(remotePeerId, conn);
       }
 
+      if (
+        this.dialedPeerToFollow &&
+        (remotePeerId === this.dialedPeerToFollow ||
+          remotePeerId.startsWith(`${this.dialedPeerToFollow}-`))
+      ) {
+        return;
+      }
+
       const helloPacket = this.createPacket('HELLO', {
         nickname: this.profile.nickname,
         isBeaconHost: this.isBeaconHost,
@@ -399,20 +462,34 @@ export class P2PEngine {
         peers: knownPeerIds,
       });
       this.safeSendConn(conn, peerListPacket);
-
-      const recent = this.callbacks.getRecentRoomMessages(this.roomId).slice(-50);
-      if (recent.length > 0) {
-        const syncPacket = this.createPacket('HISTORY_SYNC', {
-          messages: recent,
-        });
-        this.safeSendConn(conn, syncPacket);
-      }
     });
 
     conn.on('data', (raw: unknown) => {
       const packet = validateIncomingPacket(raw);
       if (!packet) return;
       if (!this.rateLimiter.allow(packet.senderId)) return;
+
+      if (
+        this.dialedPeerToFollow &&
+        (packet.senderId === this.dialedPeerToFollow ||
+          packet.senderId.startsWith(`${this.dialedPeerToFollow}-`) ||
+          remotePeerId === this.dialedPeerToFollow)
+      ) {
+        this.dialedPeerToFollow = null;
+        if (packet.roomId && packet.roomId !== this.roomId) {
+          this.followPeerIntoRoom(packet.roomId, packet.senderName, conn, packet.senderId);
+        } else {
+          this.safeSendConn(
+            conn,
+            this.createPacket('HELLO', {
+              nickname: this.profile.nickname,
+              isBeaconHost: this.isBeaconHost,
+            })
+          );
+        }
+      }
+
+      if (packet.roomId !== this.roomId) return;
 
       if (packet.senderId && packet.senderId !== this.myPeerId && !isBeaconChannel) {
         this.peerConnections.set(packet.senderId, conn);
@@ -522,6 +599,7 @@ export class P2PEngine {
     sourceConn?: DataConnection
   ): void {
     if (packet.senderId === this.myPeerId) return;
+    if (packet.roomId !== this.roomId) return;
     if (this.markPacketSeen(packet.packetId)) return;
 
     if (packet.ttl > 1) {
@@ -559,7 +637,7 @@ export class P2PEngine {
             !this.peerConnections.has(peerId) &&
             peerId.startsWith(PEER_PREFIX)
           ) {
-            this.connectToDirectPeer(peerId);
+            this.connectToDirectPeer(peerId, false);
           }
         }
         break;
@@ -574,7 +652,7 @@ export class P2PEngine {
         }
         this.typingMap.delete(packet.senderId);
         this.emitTypingChange();
-        this.callbacks.onChatMessage(msg, false);
+        this.callbacks.onChatMessage(msg);
 
         const ack = this.createPacket(
           'CHAT_ACK',
@@ -590,19 +668,6 @@ export class P2PEngine {
         const ackPeerId = sanitizeId(packet.payload?.ackPeerId);
         if (messageId && ackPeerId && ackPeerId === packet.senderId) {
           this.callbacks.onMessageAck(messageId, ackPeerId);
-        }
-        break;
-      }
-
-      case 'HISTORY_SYNC': {
-        const rawMessages = packet.payload?.messages;
-        if (!Array.isArray(rawMessages)) break;
-        const capped = rawMessages.slice(-50);
-        for (const rawMsg of capped) {
-          const validMsg = validateChatMessage(rawMsg, this.roomId);
-          if (validMsg && !validMsg.targetPeerId) {
-            this.callbacks.onChatMessage(validMsg, true);
-          }
         }
         break;
       }

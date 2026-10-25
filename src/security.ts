@@ -15,7 +15,6 @@ const ALLOWED_PACKET_TYPES = new Set<PacketType>([
   'TYPING',
   'PING',
   'PONG',
-  'HISTORY_SYNC',
   'NICK_CHANGE',
   'LEAVE',
 ]);
