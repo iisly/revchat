@@ -519,7 +519,10 @@ class RevChatApp {
           <div class="side-section">
             <div class="sec-title">
               <span>Room</span>
-              <button class="small" id="btn-new-room">RANDOM</button>
+              <span class="tool-group">
+                <button class="small" id="btn-lobby-room">LOBBY</button>
+                <button class="small" id="btn-new-room">RANDOM</button>
+              </span>
             </div>
             <div class="field-row">
               <input type="text" id="input-room" value="${this.escapeAttr(this.roomId)}" maxlength="32" placeholder="Room Code" />
@@ -1172,6 +1175,9 @@ class RevChatApp {
         e.preventDefault();
         joinRoomFromInput();
       }
+    });
+    this.root.querySelector('#btn-lobby-room')?.addEventListener('click', () => {
+      this.switchRoom('LOBBY');
     });
     this.root.querySelector('#btn-new-room')?.addEventListener('click', () => {
       this.switchRoom(generateRoomCode());
