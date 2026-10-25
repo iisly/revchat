@@ -1,6 +1,8 @@
 # revchat
 
-Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
+Minimal, ephemeral P2P chat built with WebRTC.
+
+**Live**: https://iisly.github.io/revchat/
 
 ## Features
 
@@ -24,10 +26,3 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
 | `/nick <name>` | Change your nickname |
 | `/room <code>` | Switch to another room |
 | `/clear` | Clear local chat screen |
-
-## Development
-
-```bash
-npm install
-npm run dev
-```
