@@ -23,6 +23,13 @@ const PEER_PREFIX = 'revchat-p-';
 const ROOM_BEACON_PREFIX = 'revchat-r-';
 const SEEN_PACKET_LIMIT = 1500;
 const PING_INTERVAL_MS = 4000;
+const PEER_TIMEOUT_MS = 12000;
+const OUTBOX_TTL_MS = 20000;
+
+const RTC_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.l.google.com:19302' },
+];
 
 export interface P2PEngineCallbacks {
   onSignalingChange: (state: SignalingState) => void;
@@ -56,11 +63,19 @@ export class P2PEngine {
   private seenPacketQueue: string[] = [];
   private rateLimiter = new PeerRateLimiter();
   private typingMap = new Map<string, { nickname: string; expiresAt: number }>();
+  private pendingOutbox = new Map<string, { msg: ChatMessage; createdAt: number }>();
 
   private pingTimer: number | null = null;
   private beaconCheckTimer: number | null = null;
   private typingCleanupTimer: number | null = null;
   private destroyed = false;
+
+  private readonly onVisibilityOrOnline = () => {
+    if (this.destroyed) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    this.ensureRoomConnectivity();
+    this.sendHeartbeats();
+  };
 
   constructor(profile: UserProfile, initialRoomId: string, callbacks: P2PEngineCallbacks) {
     this.profile = profile;
@@ -76,7 +91,12 @@ export class P2PEngine {
 
     this.pingTimer = window.setInterval(() => this.sendHeartbeats(), PING_INTERVAL_MS);
     this.typingCleanupTimer = window.setInterval(() => this.cleanupTyping(), 1000);
-    this.beaconCheckTimer = window.setInterval(() => this.ensureRoomConnectivity(), 9000);
+    this.beaconCheckTimer = window.setInterval(() => this.ensureRoomConnectivity(), 5000);
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.onVisibilityOrOnline);
+      document.addEventListener('visibilitychange', this.onVisibilityOrOnline);
+    }
   }
 
   public destroy(): void {
@@ -86,6 +106,10 @@ export class P2PEngine {
     if (this.pingTimer) clearInterval(this.pingTimer);
     if (this.typingCleanupTimer) clearInterval(this.typingCleanupTimer);
     if (this.beaconCheckTimer) clearInterval(this.beaconCheckTimer);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.onVisibilityOrOnline);
+      document.removeEventListener('visibilitychange', this.onVisibilityOrOnline);
+    }
     this.teardownRoomConnections();
     if (this.personalPeer) {
       this.personalPeer.destroy();
@@ -118,6 +142,7 @@ export class P2PEngine {
     this.roomId = normalized;
     this.peers.clear();
     this.typingMap.clear();
+    this.pendingOutbox.clear();
     this.emitPeersChange();
     this.emitTypingChange();
     this.emitSignalingState();
@@ -191,7 +216,10 @@ export class P2PEngine {
     this.emitSignalingState();
 
     try {
-      const peer = new Peer(this.myPeerId, { debug: 0 });
+      const peer = new Peer(this.myPeerId, {
+        debug: 0,
+        config: { iceServers: RTC_ICE_SERVERS },
+      });
       this.personalPeer = peer;
 
       peer.on('open', (id) => {
@@ -203,6 +231,7 @@ export class P2PEngine {
       });
 
       peer.on('connection', (conn) => {
+        this.pruneDeadConnections();
         if (this.peerConnections.size >= MAX_PEERS_IN_ROOM) {
           try {
             conn.close();
@@ -226,7 +255,7 @@ export class P2PEngine {
               // ignore
             }
           }
-        }, 3000);
+        }, 2000);
       });
 
       peer.on('error', (err: any) => {
@@ -273,7 +302,10 @@ export class P2PEngine {
     }
 
     try {
-      const beacon = new Peer(beaconId, { debug: 0 });
+      const beacon = new Peer(beaconId, {
+        debug: 0,
+        config: { iceServers: RTC_ICE_SERVERS },
+      });
       this.beaconPeer = beacon;
 
       beacon.on('open', () => {
@@ -287,6 +319,7 @@ export class P2PEngine {
       });
 
       beacon.on('connection', (conn) => {
+        this.pruneDeadConnections();
         if (this.beaconConnections.size >= MAX_PEERS_IN_ROOM) {
           try {
             conn.close();
@@ -296,6 +329,19 @@ export class P2PEngine {
           return;
         }
         this.setupDataConnection(conn, true);
+      });
+
+      beacon.on('disconnected', () => {
+        if (this.destroyed || this.beaconPeer !== beacon) return;
+        setTimeout(() => {
+          if (this.beaconPeer === beacon && !beacon.destroyed && beacon.disconnected) {
+            try {
+              beacon.reconnect();
+            } catch {
+              // ignore
+            }
+          }
+        }, 2000);
       });
 
       beacon.on('error', (err: any) => {
@@ -323,8 +369,11 @@ export class P2PEngine {
       return;
     }
     if (this.isBeaconHost) return;
+    this.pruneDeadConnections();
     const beaconId = this.getBeaconIdForRoom(roomId);
-    if (this.beaconConnections.has(beaconId)) return;
+    const existing = this.beaconConnections.get(beaconId);
+    if (existing && this.isConnAlive(existing)) return;
+    this.beaconConnections.delete(beaconId);
 
     try {
       const conn = this.personalPeer.connect(beaconId, {
@@ -354,21 +403,22 @@ export class P2PEngine {
     if (followRoom) {
       this.dialedPeerToFollow = fullPeerId;
     }
-    if (this.peerConnections.has(fullPeerId)) {
+
+    this.pruneDeadConnections();
+    const existingConn = this.peerConnections.get(fullPeerId);
+    if (existingConn && this.isConnAlive(existingConn)) {
       if (followRoom) {
-        const existingConn = this.peerConnections.get(fullPeerId);
-        if (existingConn && existingConn.open) {
-          this.safeSendConn(
-            existingConn,
-            this.createPacket('HELLO', {
-              nickname: this.profile.nickname,
-              isBeaconHost: this.isBeaconHost,
-            })
-          );
-        }
+        this.safeSendConn(
+          existingConn,
+          this.createPacket('HELLO', {
+            nickname: this.profile.nickname,
+            isBeaconHost: this.isBeaconHost,
+          })
+        );
       }
       return true;
     }
+    this.peerConnections.delete(fullPeerId);
     if (this.peerConnections.size >= MAX_PEERS_IN_ROOM) return false;
     if (!this.personalPeer || this.personalPeer.destroyed) return false;
 
@@ -520,13 +570,90 @@ export class P2PEngine {
     conn.on('error', handleClose);
   }
 
+  private isConnAlive(conn: DataConnection | undefined | null): boolean {
+    if (!conn || !conn.open) return false;
+    const pc = (conn as any).peerConnection as RTCPeerConnection | undefined;
+    if (pc) {
+      const cState = pc.connectionState;
+      const iState = pc.iceConnectionState;
+      if (
+        cState === 'failed' ||
+        cState === 'closed' ||
+        cState === 'disconnected' ||
+        iState === 'failed' ||
+        iState === 'closed' ||
+        iState === 'disconnected'
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private pruneDeadConnections(): void {
+    for (const [id, conn] of this.peerConnections.entries()) {
+      if (!this.isConnAlive(conn)) {
+        try {
+          conn.close();
+        } catch {
+          // ignore
+        }
+        this.peerConnections.delete(id);
+      }
+    }
+    for (const [id, conn] of this.beaconConnections.entries()) {
+      if (!this.isConnAlive(conn)) {
+        try {
+          conn.close();
+        } catch {
+          // ignore
+        }
+        this.beaconConnections.delete(id);
+      }
+    }
+  }
+
   private ensureRoomConnectivity(): void {
     if (this.destroyed) return;
     this.rateLimiter.prune();
-    if (!this.isBeaconHost && this.beaconConnections.size === 0) {
+    this.pruneDeadConnections();
+
+    if (!this.personalPeer || this.personalPeer.destroyed) {
+      this.initPersonalPeer();
+    } else if (this.personalPeer.disconnected) {
+      try {
+        this.personalPeer.reconnect();
+      } catch {
+        this.initPersonalPeer();
+      }
+    }
+
+    if (this.isBeaconHost) {
+      if (!this.beaconPeer || this.beaconPeer.destroyed) {
+        this.initRoomBeaconOrJoin(this.roomId);
+      } else if (this.beaconPeer.disconnected) {
+        try {
+          this.beaconPeer.reconnect();
+        } catch {
+          this.initRoomBeaconOrJoin(this.roomId);
+        }
+      }
+    } else if (this.beaconConnections.size === 0) {
       this.initRoomBeaconOrJoin(this.roomId);
     }
+
+    for (const [peerId, peer] of this.peers.entries()) {
+      if (
+        peer.transport === 'peerjs-mesh' &&
+        peerId.startsWith(PEER_PREFIX) &&
+        !this.peerConnections.has(peerId)
+      ) {
+        this.connectToDirectPeer(peerId, false);
+      }
+    }
+
     this.sendHelloPacket();
+    this.flushPendingOutbox();
   }
 
   private markPacketSeen(packetId: string): boolean {
@@ -622,6 +749,7 @@ export class P2PEngine {
           1
         );
         this.dispatchPacketToAll(pong);
+        this.flushPendingOutbox();
         break;
       }
 
@@ -667,6 +795,7 @@ export class P2PEngine {
         const messageId = sanitizeId(packet.payload?.messageId);
         const ackPeerId = sanitizeId(packet.payload?.ackPeerId);
         if (messageId && ackPeerId && ackPeerId === packet.senderId) {
+          this.pendingOutbox.delete(messageId);
           this.callbacks.onMessageAck(messageId, ackPeerId);
         }
         break;
@@ -787,21 +916,38 @@ export class P2PEngine {
     whisperPeer?: { peerId: string; nickname: string }
   ): ChatMessage {
     const cleanText = sanitizeString(text, MAX_MESSAGE_TEXT_LENGTH).trim();
+    const now = Date.now();
     const msg: ChatMessage = {
       id: generateUUID(),
       roomId: this.roomId,
       senderId: this.myPeerId,
       senderName: this.profile.nickname,
       text: cleanText,
-      timestamp: Date.now(),
+      timestamp: now,
       replyTo,
       targetPeerId: whisperPeer?.peerId,
       targetPeerName: whisperPeer?.nickname,
       ackedBy: [],
     };
 
+    this.pendingOutbox.set(msg.id, { msg, createdAt: now });
+    this.pruneDeadConnections();
+    if (this.peerConnections.size === 0 && this.beaconConnections.size === 0) {
+      this.ensureRoomConnectivity();
+    }
     this.broadcastPacket('CHAT_MSG', { message: msg }, 3);
     return msg;
+  }
+
+  private flushPendingOutbox(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.pendingOutbox.entries()) {
+      if (now - entry.createdAt > OUTBOX_TTL_MS || entry.msg.roomId !== this.roomId) {
+        this.pendingOutbox.delete(id);
+        continue;
+      }
+      this.broadcastPacket('CHAT_MSG', { message: entry.msg }, 3);
+    }
   }
 
   public sendTyping(isTyping: boolean): void {
@@ -818,14 +964,25 @@ export class P2PEngine {
 
   private sendHeartbeats(): void {
     if (this.destroyed) return;
+    this.pruneDeadConnections();
     const now = Date.now();
     this.broadcastPacket('PING', { sentAt: now }, 1);
+    this.flushPendingOutbox();
 
     let changed = false;
     for (const [id, peer] of this.peers.entries()) {
-      if (now - peer.lastSeenAt > 18000) {
+      if (now - peer.lastSeenAt > PEER_TIMEOUT_MS) {
         this.peers.delete(id);
         this.typingMap.delete(id);
+        const staleConn = this.peerConnections.get(id);
+        if (staleConn) {
+          try {
+            staleConn.close();
+          } catch {
+            // ignore
+          }
+          this.peerConnections.delete(id);
+        }
         changed = true;
       }
     }
