@@ -259,13 +259,6 @@ export class P2PEngine {
         if (this.destroyed || this.personalPeer !== peer) return;
         this.signalingStatus = 'offline';
         this.emitSignalingState();
-        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-          try {
-            peer.reconnect();
-          } catch {
-            // ignore
-          }
-        }
       });
 
       peer.on('error', (err: any) => {
@@ -346,13 +339,8 @@ export class P2PEngine {
 
       beacon.on('disconnected', () => {
         if (this.destroyed || this.beaconPeer !== beacon) return;
-        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-          try {
-            beacon.reconnect();
-          } catch {
-            // ignore
-          }
-        }
+        this.isBeaconHost = false;
+        this.emitSignalingState();
       });
 
       beacon.on('error', (err: any) => {
