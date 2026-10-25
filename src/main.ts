@@ -326,10 +326,10 @@ class RevChatApp {
     }
     const spec = FONT_SIZES[this.fontSizeKey];
     document.documentElement.style.setProperty('--msg-font-size', spec.px);
-    const btn = this.root.querySelector('#btn-font-size');
-    if (btn) {
-      btn.textContent = `FONT:${spec.label}`;
-    }
+    this.root.querySelectorAll('[data-size-key]').forEach((el) => {
+      const k = el.getAttribute('data-size-key');
+      el.classList.toggle('primary', k === this.fontSizeKey);
+    });
     this.showToast(`Font size: ${spec.label} (${spec.px})`);
   }
 
@@ -562,6 +562,22 @@ class RevChatApp {
               ${this.renderPeersListHtml()}
             </div>
           </div>
+
+          <!-- Sidebar Footer Toolbar: Direct Font Size (S/M/L/XL) + Theme + Help -->
+          <div class="side-toolbar">
+            <div class="size-group">
+              <button class="small ${this.fontSizeKey === 's' ? 'primary' : ''}" data-size-key="s" title="Small Font (12px)">S</button>
+              <button class="small ${this.fontSizeKey === 'm' ? 'primary' : ''}" data-size-key="m" title="Medium Font (14px)">M</button>
+              <button class="small ${this.fontSizeKey === 'l' ? 'primary' : ''}" data-size-key="l" title="Large Font (17px)">L</button>
+              <button class="small ${this.fontSizeKey === 'xl' ? 'primary' : ''}" data-size-key="xl" title="Extra Large Font (20px)">XL</button>
+            </div>
+            <div class="tool-group">
+              <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
+                ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
+              </button>
+              <button class="small" id="btn-help" title="Commands & Help">HELP</button>
+            </div>
+          </div>
         </aside>
 
         <!-- Main Chat Area -->
@@ -575,14 +591,7 @@ class RevChatApp {
               <span class="badge ok" id="topbar-peer-badge">${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}</span>
             </div>
             <div class="topbar-actions">
-              <button class="small" id="btn-font-size" title="Cycle Chat Font Size (S/M/L/XL)">
-                FONT:${FONT_SIZES[this.fontSizeKey].label}
-              </button>
-              <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
-                ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
-              </button>
               <button class="small" id="btn-toggle-search" title="Search Messages">FIND</button>
-              <button class="small" id="btn-help" title="Commands & Help">HELP</button>
             </div>
           </header>
 
@@ -1115,9 +1124,14 @@ class RevChatApp {
       this.render();
     });
 
-    // Font Size & Theme
-    this.root.querySelector('#btn-font-size')?.addEventListener('click', () => {
-      this.applyFontSize();
+    // Font Size Direct Buttons & Theme
+    this.root.querySelectorAll('[data-size-key]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-size-key') as 's' | 'm' | 'l' | 'xl' | null;
+        if (key) {
+          this.applyFontSize(key);
+        }
+      });
     });
     this.root.querySelector('#btn-theme')?.addEventListener('click', (e) => {
       const current = document.documentElement.getAttribute('data-theme');
@@ -1200,6 +1214,10 @@ class RevChatApp {
       this.openInviteModal();
     });
     this.root.querySelector('#btn-help')?.addEventListener('click', () => {
+      if (this.mobileDrawerOpen) {
+        this.mobileDrawerOpen = false;
+        this.render();
+      }
       this.activeModal = 'help';
       this.renderModal();
     });

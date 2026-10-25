@@ -92,6 +92,23 @@ body {
   font-weight: 700;
 }
 
+.side-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.size-group,
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -700,8 +717,8 @@ button.small {
     top: 0;
     left: 0;
     bottom: 0;
-    width: 86vw;
-    max-width: 320px;
+    width: 260px;
+    max-width: 86vw;
     z-index: 90;
     transform: translateX(-100%);
     transition: transform 0.18s ease-out;
