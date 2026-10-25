@@ -67,6 +67,7 @@ export class P2PEngine {
 
   private pingTimer: number | null = null;
   private typingCleanupTimer: number | null = null;
+  private healDebounceTimer: number | null = null;
   private destroyed = false;
 
   private readonly onVisibilityOrOnline = () => {
@@ -103,6 +104,7 @@ export class P2PEngine {
     this.broadcastLeave();
     if (this.pingTimer) clearInterval(this.pingTimer);
     if (this.typingCleanupTimer) clearInterval(this.typingCleanupTimer);
+    if (this.healDebounceTimer) clearTimeout(this.healDebounceTimer);
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.onVisibilityOrOnline);
       document.removeEventListener('visibilitychange', this.onVisibilityOrOnline);
@@ -556,38 +558,46 @@ export class P2PEngine {
       if (closedHandled) return;
       closedHandled = true;
       if (isBeaconChannel) {
-        this.beaconConnections.delete(remotePeerId);
+        if (this.beaconConnections.get(remotePeerId) === conn) {
+          this.beaconConnections.delete(remotePeerId);
+        }
       } else {
-        this.peerConnections.delete(remotePeerId);
-        if (this.peers.has(remotePeerId)) {
-          this.peers.delete(remotePeerId);
-          this.emitPeersChange();
+        if (this.peerConnections.get(remotePeerId) === conn) {
+          this.peerConnections.delete(remotePeerId);
         }
       }
-      if (!this.destroyed) {
-        this.ensureRoomConnectivity();
-      }
+      this.scheduleConnectivityHeal();
     };
 
-    const bindPcStateListeners = () => {
+    conn.on('open', () => {
       const pc = (conn as any).peerConnection as RTCPeerConnection | undefined;
       if (!pc) return;
       const checkState = () => {
-        if (!this.isConnAlive(conn)) {
+        const cState = pc.connectionState;
+        const iState = pc.iceConnectionState;
+        if (
+          cState === 'failed' ||
+          cState === 'closed' ||
+          iState === 'failed' ||
+          iState === 'closed'
+        ) {
           handleClose();
         }
       };
       pc.addEventListener('connectionstatechange', checkState);
       pc.addEventListener('iceconnectionstatechange', checkState);
-    };
-
-    conn.on('open', () => {
-      bindPcStateListeners();
     });
-    bindPcStateListeners();
 
     conn.on('close', handleClose);
     conn.on('error', handleClose);
+  }
+
+  private scheduleConnectivityHeal(): void {
+    if (this.destroyed || this.healDebounceTimer) return;
+    this.healDebounceTimer = window.setTimeout(() => {
+      this.healDebounceTimer = null;
+      this.ensureRoomConnectivity();
+    }, 1500);
   }
 
   private isConnAlive(conn: DataConnection | undefined | null): boolean {
