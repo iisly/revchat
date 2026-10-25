@@ -32,6 +32,28 @@ interface SlashCommandDef {
   needsArgs: boolean;
 }
 
+const ASCII_EMOTES: Record<string, string> = {
+  '/flip': '(╯°□°）╯︵ ┻━┻',
+  '/unflip': '┬─┬ ノ( ゜-゜ノ)',
+  '/shrug': '¯\\_(ツ)_/¯',
+  '/lenny': '( ͡° ͜ʖ ͡°)',
+  '/look': 'ಠ_ಠ',
+  '/gib': '༼ つ ◕_◕ ༽つ',
+  '/sparkle': '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
+  '/fight': "(ง'̀-'́)ง",
+  '/bear': 'ʕ•ᴥ•ʔ',
+  '/cry': '(ಥ﹏ಥ)',
+  '/love': '(｡♥‿♥｡)',
+  '/dance': '♪┏(・o･)┛♪',
+};
+
+const FONT_SIZES: Record<'s' | 'm' | 'l' | 'xl', { label: string; px: string }> = {
+  s: { label: 'S', px: '12px' },
+  m: { label: 'M', px: '14px' },
+  l: { label: 'L', px: '17px' },
+  xl: { label: 'XL', px: '20px' },
+};
+
 const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
   { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
@@ -39,13 +61,23 @@ const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
   { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from multiple options', needsArgs: true },
   { cmd: '/shout', usage: '/shout <text>', desc: 'Send big bold announcement', needsArgs: true },
-  { cmd: '/flip', usage: '/flip [text]', desc: 'Flip table (╯°□°）╯︵ ┻━┻', needsArgs: false },
-  { cmd: '/unflip', usage: '/unflip [text]', desc: 'Put table back ┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
+  { cmd: '/flip', usage: '/flip [text]', desc: 'Append (╯°□°）╯︵ ┻━┻', needsArgs: false },
+  { cmd: '/unflip', usage: '/unflip [text]', desc: 'Append ┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
   { cmd: '/shrug', usage: '/shrug [text]', desc: 'Append ¯\\_(ツ)_/¯', needsArgs: false },
   { cmd: '/lenny', usage: '/lenny [text]', desc: 'Append ( ͡° ͜ʖ ͡°)', needsArgs: false },
+  { cmd: '/look', usage: '/look [text]', desc: 'Append ಠ_ಠ', needsArgs: false },
+  { cmd: '/gib', usage: '/gib [text]', desc: 'Append ༼ つ ◕_◕ ༽つ', needsArgs: false },
+  { cmd: '/sparkle', usage: '/sparkle [text]', desc: 'Append (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧', needsArgs: false },
+  { cmd: '/fight', usage: '/fight [text]', desc: "Append (ง'̀-'́)ง", needsArgs: false },
+  { cmd: '/bear', usage: '/bear [text]', desc: 'Append ʕ•ᴥ•ʔ', needsArgs: false },
+  { cmd: '/cry', usage: '/cry [text]', desc: 'Append (ಥ﹏ಥ)', needsArgs: false },
+  { cmd: '/love', usage: '/love [text]', desc: 'Append (｡♥‿♥｡)', needsArgs: false },
+  { cmd: '/dance', usage: '/dance [text]', desc: 'Append ♪┏(・o･)┛♪', needsArgs: false },
   { cmd: '/me', usage: '/me <action>', desc: 'Send an action message', needsArgs: true },
   { cmd: '/nick', usage: '/nick <name>', desc: 'Change your nickname', needsArgs: true },
   { cmd: '/room', usage: '/room [code]', desc: 'Switch room (or random room if omitted)', needsArgs: false },
+  { cmd: '/follow', usage: '/follow <code>', desc: 'Follow a peer into their active room', needsArgs: true },
+  { cmd: '/size', usage: '/size [s|m|l|xl]', desc: 'Change chat font size (or cycle)', needsArgs: false },
   { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
   { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
 ];
@@ -74,6 +106,7 @@ class RevChatApp {
   private unreadWhileScrolled = 0;
   private slashMenuIndex = 0;
   private slashMenuDismissed = false;
+  private fontSizeKey: 's' | 'm' | 'l' | 'xl' = 'm';
 
   // Timers
   private lastTypingSentAt = 0;
@@ -283,6 +316,30 @@ class RevChatApp {
     this.scrollToBottom();
   }
 
+  private applyFontSize(key?: 's' | 'm' | 'l' | 'xl'): void {
+    const order: ('s' | 'm' | 'l' | 'xl')[] = ['s', 'm', 'l', 'xl'];
+    if (key && FONT_SIZES[key]) {
+      this.fontSizeKey = key;
+    } else {
+      const nextIdx = (order.indexOf(this.fontSizeKey) + 1) % order.length;
+      this.fontSizeKey = order[nextIdx];
+    }
+    const spec = FONT_SIZES[this.fontSizeKey];
+    document.documentElement.style.setProperty('--msg-font-size', spec.px);
+    const btn = this.root.querySelector('#btn-font-size');
+    if (btn) {
+      btn.textContent = `FONT:${spec.label}`;
+    }
+    this.showToast(`Font size: ${spec.label} (${spec.px})`);
+  }
+
+  private expandInlineEmotes(text: string): string {
+    return text.replace(/(^|\s)(\/[a-z0-9]+)(?=\s|$)/gi, (full, lead, token) => {
+      const emote = ASCII_EMOTES[token.toLowerCase()];
+      return emote ? `${lead}${emote}` : full;
+    });
+  }
+
   private handleSendMessage(rawInput: string): void {
     const text = rawInput.trim();
     if (!text) return;
@@ -291,7 +348,7 @@ class RevChatApp {
       return;
     }
 
-    this.dispatchUserChat(text);
+    this.dispatchUserChat(this.expandInlineEmotes(text));
   }
 
   private executeSlashCommand(text: string): boolean {
@@ -327,6 +384,28 @@ class RevChatApp {
       }
       case '/room': {
         this.switchRoom(argStr || generateRoomCode());
+        return true;
+      }
+      case '/follow': {
+        if (!argStr) {
+          this.showToast('Usage: /follow <peer-code>');
+          return true;
+        }
+        const ok = this.engine.connectToDirectPeer(argStr, true);
+        if (ok) {
+          this.showToast(`Following ${argStr} into their room...`);
+        } else {
+          this.showToast('Could not follow peer (check code)');
+        }
+        return true;
+      }
+      case '/size': {
+        const arg = argStr.toLowerCase() as 's' | 'm' | 'l' | 'xl';
+        if (arg === 's' || arg === 'm' || arg === 'l' || arg === 'xl') {
+          this.applyFontSize(arg);
+        } else {
+          this.applyFontSize();
+        }
         return true;
       }
       case '/roll': {
@@ -379,32 +458,22 @@ class RevChatApp {
       }
       case '/shout': {
         if (!argStr) return true;
-        this.dispatchUserChat(`📢 [SHOUT] ${argStr.toUpperCase()}`);
+        this.dispatchUserChat(`📢 **${this.expandInlineEmotes(argStr).toUpperCase()}**`);
         return true;
       }
       case '/me': {
         if (!argStr) return true;
-        this.dispatchUserChat(`* ${nick} ${argStr} *`);
+        this.dispatchUserChat(`* ${nick} ${this.expandInlineEmotes(argStr)} *`);
         return true;
       }
-      case '/shrug': {
-        this.dispatchUserChat(`${argStr} ¯\\_(ツ)_/¯`.trim());
-        return true;
-      }
-      case '/flip': {
-        this.dispatchUserChat(`${argStr} (╯°□°）╯︵ ┻━┻`.trim());
-        return true;
-      }
-      case '/unflip': {
-        this.dispatchUserChat(`${argStr} ┬─┬ ノ( ゜-゜ノ)`.trim());
-        return true;
-      }
-      case '/lenny': {
-        this.dispatchUserChat(`${argStr} ( ͡° ͜ʖ ͡°)`.trim());
-        return true;
-      }
-      default:
+      default: {
+        const emote = ASCII_EMOTES[cmd];
+        if (emote) {
+          this.dispatchUserChat(`${this.expandInlineEmotes(argStr)} ${emote}`.trim());
+          return true;
+        }
         return false;
+      }
     }
   }
 
@@ -432,6 +501,9 @@ class RevChatApp {
               <span>revchat // p2p</span>
             </div>
             <div style="display:flex;gap:4px;">
+              <button class="small" id="btn-font-size" title="Cycle Chat Font Size (S/M/L/XL)">
+                FONT:${FONT_SIZES[this.fontSizeKey].label}
+              </button>
               <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
                 ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
               </button>
@@ -473,11 +545,11 @@ class RevChatApp {
           <!-- P2P Connect Tools -->
           <div class="side-section">
             <div class="sec-title">
-              <span>Connect Peers</span>
+              <span>Follow Peer</span>
             </div>
             <div class="field-row">
               <input type="text" id="input-direct-peer" placeholder="Enter Peer Code" />
-              <button id="btn-dial-peer">DIAL</button>
+              <button id="btn-dial-peer">FOLLOW</button>
             </div>
             <div class="field-row" style="margin-top:6px;">
               <button style="width:100%" id="btn-open-invite">QR / INVITE LINK</button>
@@ -615,7 +687,7 @@ class RevChatApp {
           <ul>
             <li><b>Same Browser:</b> Open this URL in a second tab for instant local P2P chat.</li>
             <li><b>Mobile / Remote:</b> Tap <b>QR / INVITE LINK</b> to scan QR code or share room link.</li>
-            <li><b>Direct Join:</b> Enter a friend's Peer Code in <b>DIAL</b> to jump into their room.</li>
+            <li><b>Follow Peer:</b> Enter a friend's Peer Code in <b>FOLLOW</b> to jump into their room.</li>
             <li><b>Commands:</b> <code>/roll</code>, <code>/coin</code>, <code>/rps</code>, <code>/8ball</code>, <code>/pick</code>, <code>/help</code></li>
           </ul>
         </div>
@@ -945,7 +1017,7 @@ class RevChatApp {
                 <div class="step-title">How P2P Connectivity Works</div>
                 <div style="font-size:12px;">
                   1. <b>Room Code:</b> Join the same Room Code (or scan QR) to form a direct WebRTC mesh.<br/>
-                  2. <b>DIAL Peer Code:</b> Enter a friend's Peer Code and click DIAL to automatically jump into their current room.<br/>
+                  2. <b>FOLLOW Peer Code:</b> Enter a friend's Peer Code and click FOLLOW to automatically jump into their current room.<br/>
                   3. <b>Zero Persistence:</b> Nothing is saved to disk or storage; closing the tab destroys your session and messages immediately.
                 </div>
               </div>
@@ -954,6 +1026,8 @@ class RevChatApp {
                 <div style="font-family:var(--font-mono);font-size:12px;display:flex;flex-direction:column;gap:4px;">
                   <div><code>/nick &lt;name&gt;</code> — Change your display nickname</div>
                   <div><code>/room [code]</code> — Switch room (or random room if empty)</div>
+                  <div><code>/follow &lt;code&gt;</code> — Follow a peer into their active room</div>
+                  <div><code>/size [s|m|l|xl]</code> — Change chat font size</div>
                   <div><code>/roll [max]</code> — Roll a dice (default 1–100)</div>
                   <div><code>/coin</code> — Flip a coin (HEADS / TAILS)</div>
                   <div><code>/rps [r|p|s]</code> — Throw Rock / Paper / Scissors (or random)</div>
@@ -961,7 +1035,7 @@ class RevChatApp {
                   <div><code>/pick &lt;a, b, ...&gt;</code> — Randomly pick one item from any number of options</div>
                   <div><code>/shout &lt;msg&gt;</code> — Send a loud uppercase announcement</div>
                   <div><code>/me &lt;action&gt;</code> — Send an action status message</div>
-                  <div><code>/shrug</code> <code>/flip</code> <code>/unflip</code> <code>/lenny</code> — ASCII emotes</div>
+                  <div><code>/shrug</code> <code>/flip</code> <code>/unflip</code> <code>/lenny</code> <code>/look</code> <code>/gib</code> <code>/sparkle</code> <code>/fight</code> <code>/bear</code> <code>/cry</code> <code>/love</code> <code>/dance</code> — ASCII emotes</div>
                   <div><code>/clear</code> — Clear current chat screen</div>
                 </div>
               </div>
@@ -1011,7 +1085,10 @@ class RevChatApp {
       this.render();
     });
 
-    // Theme
+    // Font Size & Theme
+    this.root.querySelector('#btn-font-size')?.addEventListener('click', () => {
+      this.applyFontSize();
+    });
     this.root.querySelector('#btn-theme')?.addEventListener('click', () => {
       const current = document.documentElement.getAttribute('data-theme');
       this.profile.theme = current === 'dark' ? 'light' : 'dark';
@@ -1061,7 +1138,7 @@ class RevChatApp {
       this.switchRoom(generateRoomCode());
     });
 
-    // Direct Peer Dial (Follows target peer into their room)
+    // Follow Peer (Follows target peer into their room)
     const dialPeer = () => {
       const input = this.root.querySelector('#input-direct-peer') as HTMLInputElement | null;
       const val = input?.value.trim() || '';
@@ -1071,9 +1148,9 @@ class RevChatApp {
         if (input) input.value = '';
         this.mobileDrawerOpen = false;
         this.render();
-        this.showToast(`Dialing ${val} to join their room...`);
+        this.showToast(`Following ${val} into their room...`);
       } else {
-        this.showToast('Could not dial peer (check code)');
+        this.showToast('Could not follow peer (check code)');
       }
     };
     this.root.querySelector('#btn-dial-peer')?.addEventListener('click', dialPeer);
@@ -1187,8 +1264,9 @@ class RevChatApp {
         }
         if (e.key === 'Enter' && !e.shiftKey) {
           const chosen = matches[this.slashMenuIndex] || matches[0];
-          const typedCmd = textarea.value.trim().toLowerCase();
-          if (typedCmd !== chosen.cmd || chosen.needsArgs) {
+          const trimmed = textarea.value.trim().toLowerCase();
+          const isMidSentence = !textarea.value.startsWith('/') || textarea.value.includes(' ');
+          if (isMidSentence || trimmed !== chosen.cmd || chosen.needsArgs) {
             e.preventDefault();
             this.applySlashCommandSelection(chosen, textarea, autoResize);
             return;
@@ -1227,10 +1305,19 @@ class RevChatApp {
 
   private getMatchingSlashCommands(rawInput: string): SlashCommandDef[] {
     if (this.slashMenuDismissed) return [];
-    if (!rawInput.startsWith('/')) return [];
-    if (rawInput.includes(' ') || rawInput.includes('\n')) return [];
-    const prefix = rawInput.toLowerCase();
-    return SLASH_COMMANDS.filter((item) => item.cmd.startsWith(prefix));
+    if (rawInput.includes('\n')) return [];
+
+    if (rawInput.startsWith('/') && !rawInput.includes(' ')) {
+      const prefix = rawInput.toLowerCase();
+      return SLASH_COMMANDS.filter((item) => item.cmd.startsWith(prefix));
+    }
+
+    const match = rawInput.match(/(?:^|\s)(\/[a-z0-9]*)$/i);
+    if (!match) return [];
+    const token = match[1].toLowerCase();
+    return SLASH_COMMANDS.filter(
+      (item) => Boolean(ASCII_EMOTES[item.cmd]) && item.cmd.startsWith(token)
+    );
   }
 
   private applySlashCommandSelection(
@@ -1238,7 +1325,13 @@ class RevChatApp {
     textarea: HTMLTextAreaElement,
     autoResize: () => void
   ): void {
-    textarea.value = `${item.cmd} `;
+    const val = textarea.value;
+    if (val.startsWith('/') && !val.includes(' ')) {
+      textarea.value = `${item.cmd} `;
+    } else {
+      const emote = ASCII_EMOTES[item.cmd] || item.cmd;
+      textarea.value = val.replace(/(\/[a-z0-9]*)$/i, `${emote} `);
+    }
     autoResize();
     this.updateSlashMenuDOM(textarea.value);
     textarea.focus();
@@ -1350,6 +1443,7 @@ class RevChatApp {
   private formatMessageBody(raw: string): string {
     let safe = this.escapeHtml(raw);
     safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     safe = safe.replace(
       /\b(https?:\/\/[a-zA-Z0-9._~:/?#\[\]@!$'()*+,;=%-]+)\b/g,
       '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'

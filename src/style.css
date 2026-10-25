@@ -450,9 +450,14 @@ button.small {
 }
 
 .msg-body {
-  font-size: 14px;
+  font-size: var(--msg-font-size, 14px);
   white-space: pre-wrap;
   line-height: 1.45;
+}
+
+.msg-body strong {
+  font-weight: 700;
+  font-size: 1.2em;
 }
 
 .msg-body a {

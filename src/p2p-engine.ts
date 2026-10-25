@@ -424,7 +424,7 @@ export class P2PEngine {
       });
       this.setupDataConnection(conn, false);
       if (followRoom) {
-        this.callbacks.onSystemLog(`Dialing peer ${fullPeerId}...`);
+        this.callbacks.onSystemLog(`Following peer ${fullPeerId}...`);
       }
       return true;
     } catch {
