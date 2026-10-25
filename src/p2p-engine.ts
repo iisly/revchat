@@ -24,7 +24,7 @@ const ROOM_BEACON_PREFIX = 'revchat-r-';
 const SEEN_PACKET_LIMIT = 1500;
 const PING_INTERVAL_MS = 4000;
 const PEER_TIMEOUT_MS = 12000;
-const OUTBOX_TTL_MS = 15000;
+const OUTBOX_TTL_MS = 12000;
 
 const RTC_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
@@ -62,12 +62,10 @@ export class P2PEngine {
   private seenPackets = new Set<string>();
   private seenPacketQueue: string[] = [];
   private rateLimiter = new PeerRateLimiter();
-  private typingMap = new Map<string, { nickname: string; expiresAt: number }>();
+  private typingMap = new Map<string, { nickname: string; timer: number }>();
   private pendingOutbox = new Map<string, { msg: ChatMessage; createdAt: number }>();
 
   private pingTimer: number | null = null;
-  private typingCleanupTimer: number | null = null;
-  private healDebounceTimer: number | null = null;
   private destroyed = false;
 
   private readonly onVisibilityOrOnline = () => {
@@ -90,7 +88,6 @@ export class P2PEngine {
     this.initRoomBeaconOrJoin(this.roomId);
 
     this.pingTimer = window.setInterval(() => this.sendHeartbeats(), PING_INTERVAL_MS);
-    this.typingCleanupTimer = window.setInterval(() => this.cleanupTyping(), 1000);
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.onVisibilityOrOnline);
@@ -103,8 +100,7 @@ export class P2PEngine {
     this.destroyed = true;
     this.broadcastLeave();
     if (this.pingTimer) clearInterval(this.pingTimer);
-    if (this.typingCleanupTimer) clearInterval(this.typingCleanupTimer);
-    if (this.healDebounceTimer) clearTimeout(this.healDebounceTimer);
+    this.clearAllTyping();
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.onVisibilityOrOnline);
       document.removeEventListener('visibilitychange', this.onVisibilityOrOnline);
@@ -140,7 +136,7 @@ export class P2PEngine {
     this.teardownRoomConnections();
     this.roomId = normalized;
     this.peers.clear();
-    this.typingMap.clear();
+    this.clearAllTyping();
     this.pendingOutbox.clear();
     this.emitPeersChange();
     this.emitTypingChange();
@@ -246,15 +242,13 @@ export class P2PEngine {
         if (this.destroyed) return;
         this.signalingStatus = 'offline';
         this.emitSignalingState();
-        setTimeout(() => {
-          if (this.personalPeer && !this.personalPeer.destroyed && this.personalPeer.disconnected) {
-            try {
-              this.personalPeer.reconnect();
-            } catch {
-              // ignore
-            }
+        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+          try {
+            peer.reconnect();
+          } catch {
+            // ignore
           }
-        }, 2000);
+        }
       });
 
       peer.on('error', (err: any) => {
@@ -332,15 +326,13 @@ export class P2PEngine {
 
       beacon.on('disconnected', () => {
         if (this.destroyed || this.beaconPeer !== beacon) return;
-        setTimeout(() => {
-          if (this.beaconPeer === beacon && !beacon.destroyed && beacon.disconnected) {
-            try {
-              beacon.reconnect();
-            } catch {
-              // ignore
-            }
+        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+          try {
+            beacon.reconnect();
+          } catch {
+            // ignore
           }
-        }, 2000);
+        }
       });
 
       beacon.on('error', (err: any) => {
@@ -453,7 +445,8 @@ export class P2PEngine {
     this.teardownRoomConnections(preserveConn);
     this.roomId = normalized;
     this.peers.clear();
-    this.typingMap.clear();
+    this.clearAllTyping();
+    this.pendingOutbox.clear();
     this.peerConnections.set(remotePeerId, preserveConn);
 
     this.callbacks.onRoomFollowed(this.roomId, peerNickname);
@@ -566,7 +559,6 @@ export class P2PEngine {
           this.peerConnections.delete(remotePeerId);
         }
       }
-      this.scheduleConnectivityHeal();
     };
 
     conn.on('open', () => {
@@ -590,14 +582,6 @@ export class P2PEngine {
 
     conn.on('close', handleClose);
     conn.on('error', handleClose);
-  }
-
-  private scheduleConnectivityHeal(): void {
-    if (this.destroyed || this.healDebounceTimer) return;
-    this.healDebounceTimer = window.setTimeout(() => {
-      this.healDebounceTimer = null;
-      this.ensureRoomConnectivity();
-    }, 1500);
   }
 
   private isConnAlive(conn: DataConnection | undefined | null): boolean {
@@ -670,16 +654,6 @@ export class P2PEngine {
       }
     } else if (this.beaconConnections.size === 0) {
       this.initRoomBeaconOrJoin(this.roomId);
-    }
-
-    for (const [peerId, peer] of this.peers.entries()) {
-      if (
-        peer.transport === 'peerjs-mesh' &&
-        peerId.startsWith(PEER_PREFIX) &&
-        !this.peerConnections.has(peerId)
-      ) {
-        this.connectToDirectPeer(peerId, false);
-      }
     }
 
     this.sendHelloPacket();
@@ -808,8 +782,7 @@ export class P2PEngine {
         if (msg.targetPeerId && msg.targetPeerId !== this.myPeerId && msg.senderId !== this.myPeerId) {
           break;
         }
-        this.typingMap.delete(packet.senderId);
-        this.emitTypingChange();
+        this.clearPeerTyping(packet.senderId);
         this.callbacks.onChatMessage(msg);
 
         const ack = this.createPacket(
@@ -834,14 +807,10 @@ export class P2PEngine {
       case 'TYPING': {
         const isTyping = Boolean(packet.payload?.isTyping);
         if (isTyping) {
-          this.typingMap.set(packet.senderId, {
-            nickname: packet.senderName,
-            expiresAt: Date.now() + 3800,
-          });
+          this.setPeerTyping(packet.senderId, packet.senderName);
         } else {
-          this.typingMap.delete(packet.senderId);
+          this.clearPeerTyping(packet.senderId);
         }
-        this.emitTypingChange();
         break;
       }
 
@@ -893,9 +862,8 @@ export class P2PEngine {
         const existing = this.peers.get(packet.senderId);
         if (existing) {
           this.peers.delete(packet.senderId);
-          this.typingMap.delete(packet.senderId);
+          this.clearPeerTyping(packet.senderId);
           this.emitPeersChange();
-          this.emitTypingChange();
           this.callbacks.onSystemLog(`${existing.nickname} left the room.`);
         }
         break;
@@ -994,6 +962,7 @@ export class P2PEngine {
 
   private sendHeartbeats(): void {
     if (this.destroyed) return;
+    this.rateLimiter.prune();
     this.pruneDeadConnections();
     const now = Date.now();
     this.broadcastPacket('PING', { sentAt: now }, 1);
@@ -1008,7 +977,7 @@ export class P2PEngine {
     for (const [id, peer] of this.peers.entries()) {
       if (now - peer.lastSeenAt > PEER_TIMEOUT_MS) {
         this.peers.delete(id);
-        this.typingMap.delete(id);
+        this.clearPeerTyping(id);
         const staleConn = this.peerConnections.get(id);
         if (staleConn) {
           try {
@@ -1023,7 +992,6 @@ export class P2PEngine {
     }
     if (changed) {
       this.emitPeersChange();
-      this.emitTypingChange();
     }
   }
 
@@ -1035,18 +1003,33 @@ export class P2PEngine {
     }
   }
 
-  private cleanupTyping(): void {
-    const now = Date.now();
-    let changed = false;
-    for (const [peerId, info] of this.typingMap.entries()) {
-      if (now > info.expiresAt) {
-        this.typingMap.delete(peerId);
-        changed = true;
-      }
+  private setPeerTyping(peerId: string, nickname: string): void {
+    const existing = this.typingMap.get(peerId);
+    if (existing) {
+      clearTimeout(existing.timer);
     }
-    if (changed) {
+    const timer = window.setTimeout(() => {
+      this.typingMap.delete(peerId);
+      this.emitTypingChange();
+    }, 3800);
+    this.typingMap.set(peerId, { nickname, timer });
+    this.emitTypingChange();
+  }
+
+  private clearPeerTyping(peerId: string): void {
+    const existing = this.typingMap.get(peerId);
+    if (existing) {
+      clearTimeout(existing.timer);
+      this.typingMap.delete(peerId);
       this.emitTypingChange();
     }
+  }
+
+  private clearAllTyping(): void {
+    for (const info of this.typingMap.values()) {
+      clearTimeout(info.timer);
+    }
+    this.typingMap.clear();
   }
 
   private emitSignalingState(): void {

@@ -658,6 +658,13 @@ class RevChatApp {
                 }
                 <button
                   class="small msg-reply-btn"
+                  data-copy-id="${this.escapeAttr(m.id)}"
+                  title="Copy message"
+                >
+                  copy
+                </button>
+                <button
+                  class="small msg-reply-btn"
                   data-reply-id="${this.escapeAttr(m.id)}"
                   data-reply-sender="${this.escapeAttr(m.senderName)}"
                   data-reply-text="${this.escapeAttr(m.text.slice(0, 80))}"
@@ -1274,6 +1281,17 @@ class RevChatApp {
   }
 
   private bindMessageStreamEvents(): void {
+    this.root.querySelectorAll('[data-copy-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-copy-id') || '';
+        const target = this.messages.find((m) => m.id === id);
+        if (target) {
+          navigator.clipboard?.writeText(target.text);
+          this.showToast('Message copied!');
+        }
+      });
+    });
+
     this.root.querySelectorAll('[data-reply-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-reply-id') || '';
