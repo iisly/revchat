@@ -234,6 +234,19 @@ button.small {
   color: var(--fg-muted);
 }
 
+.kv-line.copyable-line {
+  cursor: pointer;
+}
+
+.kv-line.copyable-line:hover {
+  color: var(--fg);
+}
+
+.kv-line.copyable-line:hover .code-pill {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
 .code-pill {
   font-family: var(--font-mono);
   background: var(--bg);

@@ -170,7 +170,7 @@ class RevChatApp {
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('room', this.roomId);
-      url.searchParams.set('peer', this.engine ? this.engine.getMyPeerId() : '');
+      url.searchParams.delete('peer');
       return url.toString();
     } catch {
       return window.location.href;
@@ -222,15 +222,7 @@ class RevChatApp {
   private initEngine(): void {
     this.engine = new P2PEngine(this.profile, this.roomId, {
       onSignalingChange: (state) => {
-        const prevStatus = this.signalingState.status;
         this.signalingState = state;
-        if (prevStatus !== 'ready' && state.status === 'ready') {
-          const params = new URLSearchParams(window.location.search);
-          const peerToDial = params.get('peer');
-          if (peerToDial && peerToDial !== state.myPeerId) {
-            this.engine.connectToDirectPeer(peerToDial, true);
-          }
-        }
         this.updateStatusDOM();
       },
       onPeersChange: (peers) => {
@@ -517,20 +509,17 @@ class RevChatApp {
               <input type="text" id="input-nick" value="${this.escapeAttr(this.profile.nickname)}" maxlength="24" placeholder="Nickname" />
               <button id="btn-save-nick">SET</button>
             </div>
-            <div class="kv-line">
+            <div class="kv-line copyable-line" id="btn-copy-peer" title="Click to copy Peer Code">
               <span>My Peer Code:</span>
-              <span style="display:flex;align-items:center;gap:4px;">
-                <code class="code-pill" id="my-peer-code">${this.escapeHtml(this.profile.clientId.toUpperCase())}</code>
-                <button class="small" id="btn-copy-peer">COPY</button>
-              </span>
+              <code class="code-pill" id="my-peer-code">${this.escapeHtml(this.profile.clientId.toUpperCase())}</code>
             </div>
           </div>
 
           <!-- Room Section -->
           <div class="side-section">
             <div class="sec-title">
-              <span>Room Channel</span>
-              <button class="small" id="btn-new-room">+ RANDOM</button>
+              <span>Room</span>
+              <button class="small" id="btn-new-room">RANDOM</button>
             </div>
             <div class="field-row">
               <input type="text" id="input-room" value="${this.escapeAttr(this.roomId)}" maxlength="32" placeholder="ROOM-CODE" />
@@ -538,8 +527,19 @@ class RevChatApp {
             </div>
           </div>
 
+          <!-- Room Members List -->
+          <div class="side-section" style="flex:1;overflow-y:auto;">
+            <div class="sec-title">
+              <span>Members (<span id="peer-count-side">${this.peers.length}</span>)</span>
+              <span class="badge" id="room-mode-badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
+            </div>
+            <div class="peer-list" id="peer-list-container">
+              ${this.renderPeersListHtml()}
+            </div>
+          </div>
+
           <!-- P2P Connect Tools -->
-          <div class="side-section">
+          <div class="side-section" style="border-bottom:none;">
             <div class="sec-title">
               <span>Follow Peer</span>
             </div>
@@ -549,17 +549,6 @@ class RevChatApp {
             </div>
             <div class="field-row" style="margin-top:6px;">
               <button style="width:100%" id="btn-open-invite">QR / INVITE LINK</button>
-            </div>
-          </div>
-
-          <!-- Connected Peers List -->
-          <div class="side-section" style="flex:1;border-bottom:none;">
-            <div class="sec-title">
-              <span>Connected Peers (<span id="peer-count-side">${this.peers.length}</span>)</span>
-              <span class="badge">${this.signalingState.isBeaconHost ? 'HOST' : 'MESH'}</span>
-            </div>
-            <div class="peer-list" id="peer-list-container">
-              ${this.renderPeersListHtml()}
             </div>
           </div>
 
@@ -858,6 +847,10 @@ class RevChatApp {
     const label = this.root.querySelector('#sig-label');
     if (label) {
       label.textContent = this.getSignalingBadgeText();
+    }
+    const modeBadge = this.root.querySelector('#room-mode-badge');
+    if (modeBadge) {
+      modeBadge.textContent = this.signalingState.isBeaconHost ? 'HOST' : 'MESH';
     }
     this.updateTypingDOM();
   }
