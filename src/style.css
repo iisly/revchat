@@ -511,11 +511,11 @@ button.small {
   opacity: 0.75;
 }
 
-.msg-whisper-tag {
-  display: flex;
-  align-items: center;
-  line-height: 1;
-  margin: 1px 0 3px 0;
+.msg-whisper-line {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--warn);
+  margin-bottom: 2px;
 }
 
 .msg-quote {

@@ -876,7 +876,7 @@ class RevChatApp {
         </div>
         ${
           m.targetPeerId
-            ? `<div class="msg-whisper-tag"><span class="badge">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</span></div>`
+            ? `<div class="msg-whisper-line">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</div>`
             : ''
         }
         ${
