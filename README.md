@@ -41,7 +41,8 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
 ### 4. ASCII Emotes (In-place)
 | Emote Command | Output |
 | :--- | :--- |
-| `/rev` | `🚩( ͡° ͜ʖ ͡°)🚩` (Signature) |
+| `/rev` | `(ง ͡° ͜ʖ ͡°)ง🏴` (Signature) |
+| `/revrev` | `🚩( ͡° ͜ʖ ͡°)🚩` (Signature) |
 | `/shrug` | `¯\_(ツ)_/¯` |
 | `/flip` | `(╯°□°）╯︵ ┻━┻` |
 | `/unflip` | `┬─┬ ノ( ゜-゜ノ)` |

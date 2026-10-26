@@ -33,7 +33,8 @@ interface SlashCommandDef {
 }
 
 const ASCII_EMOTES: Record<string, string> = {
-  '/rev': '🚩( ͡° ͜ʖ ͡°)🚩',
+  '/rev': '(ง ͡° ͜ʖ ͡°)ง🏴',
+  '/revrev': '🚩( ͡° ͜ʖ ͡°)🚩',
   '/shrug': '¯\\_(ツ)_/¯',
   '/flip': '(╯°□°）╯︵ ┻━┻',
   '/unflip': '┬─┬ ノ( ゜-゜ノ)',
@@ -70,7 +71,8 @@ const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
 
   // ASCII Emotes
-  { cmd: '/rev', usage: '/rev', desc: '🚩( ͡° ͜ʖ ͡°)🚩', needsArgs: false },
+  { cmd: '/rev', usage: '/rev', desc: '(ง ͡° ͜ʖ ͡°)ง🏴', needsArgs: false },
+  { cmd: '/revrev', usage: '/revrev', desc: '🚩( ͡° ͜ʖ ͡°)🚩', needsArgs: false },
   { cmd: '/shrug', usage: '/shrug', desc: '¯\\_(ツ)_/¯', needsArgs: false },
   { cmd: '/flip', usage: '/flip', desc: '(╯°□°）╯︵ ┻━┻', needsArgs: false },
   { cmd: '/unflip', usage: '/unflip', desc: '┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
@@ -1164,7 +1166,8 @@ class RevChatApp {
                 <div class="help-group">
                   <div class="help-group-title">ASCII Emotes (In-place)</div>
                   <div class="help-emotes-chips">
-                    <code>/rev 🚩</code>
+                    <code>/rev 🏴</code>
+                    <code>/revrev 🚩</code>
                     <code>/shrug</code>
                     <code>/flip</code>
                     <code>/unflip</code>
