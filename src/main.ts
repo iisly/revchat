@@ -354,7 +354,7 @@ class RevChatApp {
   }
 
   private expandInlineTokens(text: string): string {
-    let res = text.replace(/(^|\s)@me(?=\s|$)/gi, (full, lead) => `${lead}${this.profile.nickname}`);
+    let res = text.replace(/(^|\s)@me(?=\s|$)/gi, (full, lead) => `${lead}@${this.profile.nickname}`);
     res = res.replace(/(^|\s)(\/[a-z0-9]+)(?=\s|$)/gi, (full, lead, token) => {
       const emote = ASCII_EMOTES[token.toLowerCase()];
       return emote ? `${lead}${emote}` : full;
