@@ -33,15 +33,14 @@ interface SlashCommandDef {
 }
 
 const ASCII_EMOTES: Record<string, string> = {
+  '/rev': '🚩( ͡° ͜ʖ ͡°)🚩',
+  '/shrug': '¯\\_(ツ)_/¯',
   '/flip': '(╯°□°）╯︵ ┻━┻',
   '/unflip': '┬─┬ ノ( ゜-゜ノ)',
-  '/shrug': '¯\\_(ツ)_/¯',
   '/lenny': '( ͡° ͜ʖ ͡°)',
   '/look': 'ಠ_ಠ',
   '/gib': '༼ つ ◕_◕ ༽つ',
-  '/sparkle': '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
   '/fight': "(ง'̀-'́)ง",
-  '/bear': 'ʕ•ᴥ•ʔ',
   '/cry': '(ಥ﹏ಥ)',
   '/love': '(｡♥‿♥｡)',
   '/dance': '♪┏(・o･)┛♪',
@@ -54,30 +53,41 @@ const FONT_SIZES: Record<'s' | 'm' | 'l', { label: string; px: string }> = {
 };
 
 const SLASH_COMMANDS: SlashCommandDef[] = [
-  { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
-  { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
-  { cmd: '/rps', usage: '/rps [r|p|s]', desc: 'Throw Rock, Paper, or Scissors (random if omitted)', needsArgs: false },
-  { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
-  { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from multiple options', needsArgs: true },
-  { cmd: '/shout', usage: '/shout <text>', desc: 'Send big bold announcement', needsArgs: true },
-  { cmd: '/flip', usage: '/flip [text]', desc: 'Append (╯°□°）╯︵ ┻━┻', needsArgs: false },
-  { cmd: '/unflip', usage: '/unflip [text]', desc: 'Append ┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
-  { cmd: '/shrug', usage: '/shrug [text]', desc: 'Append ¯\\_(ツ)_/¯', needsArgs: false },
-  { cmd: '/lenny', usage: '/lenny [text]', desc: 'Append ( ͡° ͜ʖ ͡°)', needsArgs: false },
-  { cmd: '/look', usage: '/look [text]', desc: 'Append ಠ_ಠ', needsArgs: false },
-  { cmd: '/gib', usage: '/gib [text]', desc: 'Append ༼ つ ◕_◕ ༽つ', needsArgs: false },
-  { cmd: '/sparkle', usage: '/sparkle [text]', desc: 'Append (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧', needsArgs: false },
-  { cmd: '/fight', usage: '/fight [text]', desc: "Append (ง'̀-'́)ง", needsArgs: false },
-  { cmd: '/bear', usage: '/bear [text]', desc: 'Append ʕ•ᴥ•ʔ', needsArgs: false },
-  { cmd: '/cry', usage: '/cry [text]', desc: 'Append (ಥ﹏ಥ)', needsArgs: false },
-  { cmd: '/love', usage: '/love [text]', desc: 'Append (｡♥‿♥｡)', needsArgs: false },
-  { cmd: '/dance', usage: '/dance [text]', desc: 'Append ♪┏(・o･)┛♪', needsArgs: false },
-  { cmd: '/me', usage: '/me <action>', desc: 'Send an action message', needsArgs: true },
+  // Core Settings
   { cmd: '/nick', usage: '/nick <name>', desc: 'Change your nickname', needsArgs: true },
   { cmd: '/room', usage: '/room [code]', desc: 'Switch room (or random room if omitted)', needsArgs: false },
   { cmd: '/follow', usage: '/follow <code>', desc: 'Follow a peer into their active room', needsArgs: true },
-  { cmd: '/size', usage: '/size [s|m|l]', desc: 'Change main panel font size (or cycle)', needsArgs: false },
+
+  // Chat Expression
+  { cmd: '/bold', usage: '/bold <text>', desc: 'Send bold message', needsArgs: true },
+  { cmd: '/italic', usage: '/italic <text>', desc: 'Send italic message', needsArgs: true },
+
+  // Mini-Games (Strict)
+  { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
+  { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
+  { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from options', needsArgs: true },
+  { cmd: '/rps', usage: '/rps [r|p|s]', desc: 'Throw Rock, Paper, or Scissors (random if omitted)', needsArgs: false },
+  { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
+
+  // ASCII Emotes
+  { cmd: '/rev', usage: '/rev', desc: '🚩( ͡° ͜ʖ ͡°)🚩', needsArgs: false },
+  { cmd: '/shrug', usage: '/shrug', desc: '¯\\_(ツ)_/¯', needsArgs: false },
+  { cmd: '/flip', usage: '/flip', desc: '(╯°□°）╯︵ ┻━┻', needsArgs: false },
+  { cmd: '/unflip', usage: '/unflip', desc: '┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
+  { cmd: '/lenny', usage: '/lenny', desc: '( ͡° ͜ʖ ͡°)', needsArgs: false },
+  { cmd: '/look', usage: '/look', desc: 'ಠ_ಠ', needsArgs: false },
+  { cmd: '/gib', usage: '/gib', desc: '༼ つ ◕_◕ ༽つ', needsArgs: false },
+  { cmd: '/fight', usage: '/fight', desc: "(ง'̀-'́)ง", needsArgs: false },
+  { cmd: '/cry', usage: '/cry', desc: '(ಥ﹏ಥ)', needsArgs: false },
+  { cmd: '/love', usage: '/love', desc: '(｡♥‿♥｡)', needsArgs: false },
+  { cmd: '/dance', usage: '/dance', desc: '♪┏(・o･)┛♪', needsArgs: false },
+
+  // Utility & Appearance
   { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
+  { cmd: '/size', usage: '/size [s|m|l]', desc: 'Change font size (or cycle)', needsArgs: false },
+  { cmd: '/theme', usage: '/theme [dark|light]', desc: 'Switch theme (dark or light)', needsArgs: false },
+  { cmd: '/dark', usage: '/dark', desc: 'Switch to dark theme', needsArgs: false },
+  { cmd: '/light', usage: '/light', desc: 'Switch to light theme', needsArgs: false },
   { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
 ];
 
@@ -105,6 +115,8 @@ class RevChatApp {
   private unreadWhileScrolled = 0;
   private slashMenuIndex = 0;
   private slashMenuDismissed = false;
+  private mentionMenuIndex = 0;
+  private mentionMenuDismissed = false;
   private fontSizeKey: 's' | 'm' | 'l' = 's';
 
   // Timers
@@ -339,11 +351,13 @@ class RevChatApp {
     this.showToast(`Font size: ${spec.label} (${spec.px})`);
   }
 
-  private expandInlineEmotes(text: string): string {
-    return text.replace(/(^|\s)(\/[a-z0-9]+)(?=\s|$)/gi, (full, lead, token) => {
+  private expandInlineTokens(text: string): string {
+    let res = text.replace(/(^|\s)@me(?=\s|$)/gi, (full, lead) => `${lead}${this.profile.nickname}`);
+    res = res.replace(/(^|\s)(\/[a-z0-9]+)(?=\s|$)/gi, (full, lead, token) => {
       const emote = ASCII_EMOTES[token.toLowerCase()];
       return emote ? `${lead}${emote}` : full;
     });
+    return res;
   }
 
   private handleSendMessage(rawInput: string): void {
@@ -354,7 +368,7 @@ class RevChatApp {
       return;
     }
 
-    this.dispatchUserChat(this.expandInlineEmotes(text));
+    this.dispatchUserChat(this.expandInlineTokens(text));
   }
 
   private executeSlashCommand(text: string): boolean {
@@ -406,6 +420,22 @@ class RevChatApp {
         }
         return true;
       }
+      case '/bold': {
+        if (!argStr) {
+          this.showToast('Usage: /bold <text>');
+          return true;
+        }
+        this.dispatchUserChat(`**${this.expandInlineTokens(argStr)}**`);
+        return true;
+      }
+      case '/italic': {
+        if (!argStr) {
+          this.showToast('Usage: /italic <text>');
+          return true;
+        }
+        this.dispatchUserChat(`*${this.expandInlineTokens(argStr)}*`);
+        return true;
+      }
       case '/size': {
         const arg = argStr.toLowerCase() as 's' | 'm' | 'l';
         if (arg === 's' || arg === 'm' || arg === 'l') {
@@ -416,28 +446,43 @@ class RevChatApp {
         return true;
       }
       case '/roll': {
-        const max = Math.min(1_000_000, Math.max(2, parseInt(argStr, 10) || 100));
+        let max = 100;
+        if (argStr) {
+          const parsed = parseInt(argStr, 10);
+          if (isNaN(parsed) || parsed < 2) {
+            this.showToast('Usage: /roll [max]');
+            return true;
+          }
+          max = Math.min(1_000_000, parsed);
+        }
         const val = Math.floor(Math.random() * max) + 1;
         this.dispatchUserChat(`🎲 ${nick} rolled ${val} (1-${max})`);
         return true;
       }
       case '/coin': {
+        if (argStr) {
+          this.showToast('Usage: /coin');
+          return true;
+        }
         const side = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
         this.dispatchUserChat(`🪙 ${nick} flipped a coin → ${side}!`);
         return true;
       }
       case '/rps': {
         const hands = ['✊ ROCK', '✋ PAPER', '✌️ SCISSORS'];
+        if (!argStr) {
+          const pick = hands[Math.floor(Math.random() * hands.length)];
+          this.dispatchUserChat(`🎲 ${nick} randomly threw ${pick}!`);
+          return true;
+        }
         const choice = argStr.toLowerCase();
-        let pick: string;
-        if (choice === 'r' || choice === 'rock') {
-          pick = hands[0];
-        } else if (choice === 'p' || choice === 'paper') {
-          pick = hands[1];
-        } else if (choice === 's' || choice === 'scissors') {
-          pick = hands[2];
-        } else {
-          pick = hands[Math.floor(Math.random() * hands.length)];
+        let pick = '';
+        if (choice === 'r' || choice === 'rock') pick = hands[0];
+        else if (choice === 'p' || choice === 'paper') pick = hands[1];
+        else if (choice === 's' || choice === 'scissors') pick = hands[2];
+        else {
+          this.showToast('Usage: /rps [r|p|s]');
+          return true;
         }
         this.dispatchUserChat(`${nick} threw ${pick}!`);
         return true;
@@ -463,20 +508,29 @@ class RevChatApp {
         this.dispatchUserChat(`🎯 ${nick} picked: ${chosen} (from ${items.join(', ')})`);
         return true;
       }
-      case '/shout': {
-        if (!argStr) return true;
-        this.dispatchUserChat(`📢 **${this.expandInlineEmotes(argStr).toUpperCase()}**`);
-        return true;
-      }
-      case '/me': {
-        if (!argStr) return true;
-        this.dispatchUserChat(`* ${nick} ${this.expandInlineEmotes(argStr)} *`);
+      case '/theme':
+      case '/dark':
+      case '/light': {
+        let targetTheme: 'dark' | 'light' = this.profile.theme === 'dark' ? 'light' : 'dark';
+        if (cmd === '/dark') targetTheme = 'dark';
+        else if (cmd === '/light') targetTheme = 'light';
+        else if (argStr.toLowerCase() === 'dark' || argStr.toLowerCase() === 'light') {
+          targetTheme = argStr.toLowerCase() as 'dark' | 'light';
+        }
+        this.profile.theme = targetTheme;
+        this.engine.updateProfile(this.profile);
+        this.applyTheme();
+        const themeBtn = this.root.querySelector('#btn-theme');
+        if (themeBtn) {
+          themeBtn.textContent = targetTheme === 'dark' ? 'LIGHT' : 'DARK';
+        }
+        this.showToast(`Theme switched to ${targetTheme.toUpperCase()}`);
         return true;
       }
       default: {
         const emote = ASCII_EMOTES[cmd];
         if (emote) {
-          this.dispatchUserChat(`${this.expandInlineEmotes(argStr)} ${emote}`.trim());
+          this.dispatchUserChat(this.expandInlineTokens(text));
           return true;
         }
         return false;
@@ -609,6 +663,7 @@ class RevChatApp {
           </button>
 
           <div id="slash-menu-container"></div>
+          <div id="mention-menu-container"></div>
 
           <div id="composer-context-container">
             ${this.renderContextBannerHtml()}
@@ -730,13 +785,20 @@ class RevChatApp {
     if (filtered.length === 0) {
       return `
         <div class="empty-state">
-          <h3>#${this.escapeHtml(this.roomId)} — P2P Channel Ready</h3>
-          <ul>
-            <li><b>Same Browser:</b> Open this URL in a second tab for instant local P2P chat.</li>
-            <li><b>Mobile / Remote:</b> Tap <b>QR/LINK</b> to scan QR code or share room link.</li>
-            <li><b>Follow Peer:</b> Enter a friend's Peer Code in <b>FOLLOW</b> to jump into their room.</li>
-            <li><b>Commands:</b> <code>/roll</code>, <code>/coin</code>, <code>/rps</code>, <code>/8ball</code>, <code>/pick</code>, <code>/help</code></li>
-          </ul>
+          <pre class="ascii-banner">
+  ____ _____ _   _  ____ _   _    _  _____ 
+ |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
+ | |_) |  _| | | | | |   | |_| | / _ \\ | |  
+ |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
+ |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
+               🚩( ͡° ͜ʖ ͡°)🚩</pre>
+          <div class="empty-header">#${this.escapeHtml(this.roomId)} — P2P Channel Ready</div>
+          <div class="empty-principles">
+            <div><b>Connect:</b> Enter a Room Code (or scan QR) to link via WebRTC.</div>
+            <div><b>Follow:</b> Paste a friend’s Peer Code to jump straight into their room.</div>
+            <div><b>Zero Traces:</b> No disk, no logs. Close the tab, and destroy everything.</div>
+          </div>
+          <div class="empty-hint">Type <code>/help</code> for commands or <code>@</code> to mention.</div>
         </div>
       `;
     }
@@ -1051,36 +1113,83 @@ class RevChatApp {
     if (this.activeModal === 'help') {
       modalRoot.innerHTML = `
         <div class="modal-backdrop" id="modal-backdrop">
-          <div class="modal">
+          <div class="modal help-modal">
             <div class="modal-header">
               <span>REVCHAT // GUIDE & COMMANDS</span>
               <button class="small" id="btn-modal-close">✕</button>
             </div>
-            <div class="modal-body">
-              <div class="step-block">
-                <div class="step-title">How P2P Connectivity Works</div>
-                <div style="font-size:12px;">
-                  1. <b>Room Code:</b> Join the same Room Code (or scan QR) to form a direct WebRTC mesh.<br/>
-                  2. <b>FOLLOW Peer Code:</b> Enter a friend's Peer Code and click FOLLOW to automatically jump into their current room.<br/>
-                  3. <b>Zero Persistence:</b> Nothing is saved to disk or storage; closing the tab destroys your session and messages immediately.
+            <div class="modal-body help-modal-body">
+              <pre class="ascii-banner">
+  ____ _____ _   _  ____ _   _    _  _____ 
+ |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
+ | |_) |  _| | | | | |   | |_| | / _ \\ | |  
+ |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
+ |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
+               🚩( ͡° ͜ʖ ͡°)🚩</pre>
+
+              <div class="help-section">
+                <div class="help-section-title">How revchat works</div>
+                <div class="help-principles">
+                  <div><b>Connect:</b> Enter a Room Code (or scan QR) to link via WebRTC.</div>
+                  <div><b>Follow:</b> Paste a friend’s Peer Code to jump straight into their room.</div>
+                  <div><b>Zero Traces:</b> No disk, no logs. Close the tab, and destroy everything.</div>
                 </div>
               </div>
-              <div class="step-block">
-                <div class="step-title">Slash Commands</div>
-                <div style="font-family:var(--font-mono);font-size:12px;display:flex;flex-direction:column;gap:4px;">
-                  <div><code>/nick &lt;name&gt;</code> — Change your display nickname</div>
-                  <div><code>/room [code]</code> — Switch room (or random room if empty)</div>
-                  <div><code>/follow &lt;code&gt;</code> — Follow a peer into their active room</div>
-                  <div><code>/size [s|m|l]</code> — Change main panel font size</div>
-                  <div><code>/roll [max]</code> — Roll a dice (default 1–100)</div>
-                  <div><code>/coin</code> — Flip a coin (HEADS / TAILS)</div>
-                  <div><code>/rps [r|p|s]</code> — Throw Rock / Paper / Scissors (or random)</div>
-                  <div><code>/8ball &lt;q&gt;</code> — Ask the Magic 8-Ball a question</div>
-                  <div><code>/pick &lt;a, b, ...&gt;</code> — Randomly pick one item from any number of options</div>
-                  <div><code>/shout &lt;msg&gt;</code> — Send a loud uppercase announcement</div>
-                  <div><code>/me &lt;action&gt;</code> — Send an action status message</div>
-                  <div><code>/shrug</code> <code>/flip</code> <code>/unflip</code> <code>/lenny</code> <code>/look</code> <code>/gib</code> <code>/sparkle</code> <code>/fight</code> <code>/bear</code> <code>/cry</code> <code>/love</code> <code>/dance</code> — ASCII emotes</div>
-                  <div><code>/clear</code> — Clear current chat screen</div>
+
+              <div class="help-section">
+                <div class="help-section-title">Slash Commands</div>
+                
+                <div class="help-group">
+                  <div class="help-group-title">Core Settings</div>
+                  <div class="help-cmd-row"><code>/nick &lt;name&gt;</code><span>Change your nickname</span></div>
+                  <div class="help-cmd-row"><code>/room [code]</code><span>Switch room (or random)</span></div>
+                  <div class="help-cmd-row"><code>/follow &lt;code&gt;</code><span>Follow peer into room</span></div>
+                </div>
+
+                <div class="help-group">
+                  <div class="help-group-title">Chat Expression</div>
+                  <div class="help-cmd-row"><code>/bold &lt;text&gt;</code><span>Send bold text (**text**)</span></div>
+                  <div class="help-cmd-row"><code>/italic &lt;text&gt;</code><span>Send italic text (*text*)</span></div>
+                </div>
+
+                <div class="help-group">
+                  <div class="help-group-title">Mini-Games</div>
+                  <div class="help-cmd-row"><code>/coin</code><span>Flip coin (HEADS / TAILS)</span></div>
+                  <div class="help-cmd-row"><code>/roll [max]</code><span>Roll dice (default 1-100)</span></div>
+                  <div class="help-cmd-row"><code>/rps [r|p|s]</code><span>Rock, Paper, Scissors (random if omitted)</span></div>
+                  <div class="help-cmd-row"><code>/pick &lt;a, b, ...&gt;</code><span>Pick random option</span></div>
+                  <div class="help-cmd-row"><code>/8ball &lt;question&gt;</code><span>Ask the Magic 8-Ball</span></div>
+                </div>
+
+                <div class="help-group">
+                  <div class="help-group-title">ASCII Emotes (In-place)</div>
+                  <div class="help-emotes-chips">
+                    <code>/rev 🚩</code>
+                    <code>/shrug</code>
+                    <code>/flip</code>
+                    <code>/unflip</code>
+                    <code>/lenny</code>
+                    <code>/look</code>
+                    <code>/gib</code>
+                    <code>/fight</code>
+                    <code>/cry</code>
+                    <code>/love</code>
+                    <code>/dance</code>
+                  </div>
+                </div>
+
+                <div class="help-group">
+                  <div class="help-group-title">Utility & Appearance</div>
+                  <div class="help-cmd-row"><code>/clear</code><span>Clear local chat view</span></div>
+                  <div class="help-cmd-row"><code>/size [s|m|l]</code><span>Change font size (or cycle)</span></div>
+                  <div class="help-cmd-row"><code>/theme [dark|light]</code><span>Switch theme (or /dark, /light)</span></div>
+                  <div class="help-cmd-row"><code>/help</code><span>Open this guide</span></div>
+                </div>
+
+                <div class="help-group">
+                  <div class="help-group-title">Mentions</div>
+                  <div class="help-cmd-row"><code>@&lt;nickname&gt;</code><span>Mention peer in room</span></div>
+                  <div class="help-cmd-row"><code>@me</code><span>Auto-expand your nickname</span></div>
                 </div>
               </div>
             </div>
@@ -1257,6 +1366,10 @@ class RevChatApp {
       this.slashMenuIndex = 0;
       this.updateSlashMenuDOM(textarea.value);
 
+      this.mentionMenuDismissed = false;
+      this.mentionMenuIndex = 0;
+      this.updateMentionMenuDOM(textarea.value);
+
       const now = Date.now();
       if (textarea.value.trim().length > 0) {
         if (now - this.lastTypingSentAt > 2000) {
@@ -1311,6 +1424,34 @@ class RevChatApp {
         }
       }
 
+      const mentionMatches = this.getMatchingMentions(textarea.value);
+      if (mentionMatches.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this.mentionMenuIndex = (this.mentionMenuIndex + 1) % mentionMatches.length;
+          this.updateMentionMenuDOM(textarea.value);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this.mentionMenuIndex = (this.mentionMenuIndex - 1 + mentionMatches.length) % mentionMatches.length;
+          this.updateMentionMenuDOM(textarea.value);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.mentionMenuDismissed = true;
+          this.updateMentionMenuDOM(textarea.value);
+          return;
+        }
+        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault();
+          const chosen = mentionMatches[this.mentionMenuIndex] || mentionMatches[0];
+          this.applyMentionSelection(chosen, textarea, autoResize);
+          return;
+        }
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (textarea.value.trim()) {
@@ -1318,6 +1459,7 @@ class RevChatApp {
           textarea.value = '';
           autoResize();
           this.updateSlashMenuDOM('');
+          this.updateMentionMenuDOM('');
           this.handleSendMessage(val);
         }
       }
@@ -1330,6 +1472,7 @@ class RevChatApp {
         textarea.value = '';
         autoResize();
         this.updateSlashMenuDOM('');
+        this.updateMentionMenuDOM('');
         this.handleSendMessage(val);
         textarea.focus();
       }
@@ -1364,7 +1507,11 @@ class RevChatApp {
   ): void {
     const val = textarea.value;
     if (val.startsWith('/') && !val.includes(' ')) {
-      textarea.value = `${item.cmd} `;
+      if (ASCII_EMOTES[item.cmd]) {
+        textarea.value = `${ASCII_EMOTES[item.cmd]} `;
+      } else {
+        textarea.value = `${item.cmd} `;
+      }
     } else {
       const emote = ASCII_EMOTES[item.cmd] || item.cmd;
       textarea.value = val.replace(/(\/[a-z0-9]*)$/i, `${emote} `);
@@ -1418,6 +1565,95 @@ class RevChatApp {
         const chosen = matches[idx];
         if (chosen && textarea) {
           this.applySlashCommandSelection(chosen, textarea, () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${Math.min(120, textarea.scrollHeight)}px`;
+          });
+        }
+      });
+    });
+  }
+
+  private getMatchingMentions(rawInput: string): Array<{ tag: string; label: string; desc: string }> {
+    if (this.mentionMenuDismissed) return [];
+    if (rawInput.includes('\n')) return [];
+
+    const match = rawInput.match(/(?:^|\s)(@[a-zA-Z0-9_\-\uAC00-\uD7A3]*)$/i);
+    if (!match) return [];
+    const token = match[1].toLowerCase();
+
+    const list: Array<{ tag: string; label: string; desc: string }> = [
+      { tag: '@me', label: `@me (${this.profile.nickname})`, desc: 'Your display nickname' },
+    ];
+
+    for (const peer of this.peers) {
+      if (peer.nickname && !list.some((it) => it.tag.toLowerCase() === `@${peer.nickname.toLowerCase()}`)) {
+        list.push({
+          tag: `@${peer.nickname}`,
+          label: `@${peer.nickname}`,
+          desc: peer.peerId.slice(-6),
+        });
+      }
+    }
+
+    return list.filter((item) => item.tag.toLowerCase().startsWith(token));
+  }
+
+  private applyMentionSelection(
+    item: { tag: string; label: string; desc: string },
+    textarea: HTMLTextAreaElement,
+    autoResize: () => void
+  ): void {
+    const val = textarea.value;
+    textarea.value = val.replace(/(@[a-zA-Z0-9_\-\uAC00-\uD7A3]*)$/i, `${item.tag} `);
+    autoResize();
+    this.updateMentionMenuDOM(textarea.value);
+    textarea.focus();
+  }
+
+  private updateMentionMenuDOM(rawInput: string): void {
+    const container = this.root.querySelector('#mention-menu-container') as HTMLElement | null;
+    if (!container) return;
+
+    const matches = this.getMatchingMentions(rawInput);
+    if (matches.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    if (this.mentionMenuIndex >= matches.length) {
+      this.mentionMenuIndex = 0;
+    }
+
+    container.innerHTML = `
+      <div class="slash-menu mention-menu" id="mention-menu">
+        <div class="slash-menu-header">
+          <span>Mentions (${matches.length})</span>
+          <span>↑↓ Navigate • Tab/Enter Select</span>
+        </div>
+        ${matches
+          .map(
+            (item, idx) => `
+          <div class="slash-item ${idx === this.mentionMenuIndex ? 'active' : ''}" data-mention-idx="${idx}">
+            <span class="slash-cmd">${this.escapeHtml(item.label)}</span>
+            <span class="slash-desc">${this.escapeHtml(item.desc)}</span>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    `;
+
+    const activeEl = container.querySelector('.slash-item.active') as HTMLElement | null;
+    activeEl?.scrollIntoView({ block: 'nearest' });
+
+    const textarea = this.root.querySelector('#composer-input') as HTMLTextAreaElement | null;
+    container.querySelectorAll('[data-mention-idx]').forEach((el) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const idx = Number(el.getAttribute('data-mention-idx') || 0);
+        const chosen = matches[idx];
+        if (chosen && textarea) {
+          this.applyMentionSelection(chosen, textarea, () => {
             textarea.style.height = 'auto';
             textarea.style.height = `${Math.min(120, textarea.scrollHeight)}px`;
           });
@@ -1481,9 +1717,14 @@ class RevChatApp {
     let safe = this.escapeHtml(raw);
     safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
     safe = safe.replace(
       /\b(https?:\/\/[a-zA-Z0-9._~:/?#\[\]@!$'()*+,;=%-]+)\b/g,
       '<a href="$1" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">$1</a>'
+    );
+    safe = safe.replace(
+      /(^|\s)(@[a-zA-Z0-9_\-\uAC00-\uD7A3]+)/g,
+      '$1<span class="chat-mention">$2</span>'
     );
     return safe;
   }

@@ -380,25 +380,59 @@ button.small {
 
 .empty-state {
   margin: auto;
-  max-width: 480px;
+  max-width: 500px;
   border: 1px dashed var(--border);
-  padding: 16px;
+  padding: 18px 20px;
   font-family: var(--font-mono);
-  font-size: 0.88em;
-  color: var(--fg-muted);
-}
-
-.empty-state h3 {
-  color: var(--fg);
-  margin-bottom: 8px;
-  font-size: 1em;
-}
-
-.empty-state ul {
-  padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+}
+
+.ascii-banner {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.15;
+  color: var(--accent);
+  margin: 0 auto;
+  text-align: center;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.empty-header {
+  font-weight: 700;
+  color: var(--fg);
+  font-size: 14px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.empty-principles,
+.help-principles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.empty-principles b,
+.help-principles b {
+  color: var(--accent);
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.chat-mention {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .msg-row {
@@ -711,6 +745,83 @@ button.small {
   font-family: var(--font-mono);
   font-size: 12px;
   z-index: 200;
+}
+
+.help-modal {
+  max-width: 560px;
+}
+
+.help-modal-body {
+  font-size: 13px;
+  gap: 14px;
+}
+
+.help-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-section-title {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.help-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+}
+
+.help-group-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.help-cmd-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.help-cmd-row code {
+  color: var(--fg);
+}
+
+.help-cmd-row span {
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.help-emotes-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.help-emotes-chips code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  font-size: 12px;
 }
 
 /* Mobile-Specific Ergonomics (< 768px) */
