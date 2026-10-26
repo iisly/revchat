@@ -27,7 +27,7 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, WebRTC and PeerJS.
 | Command | Description |
 | :--- | :--- |
 | `/coin` | Flip a coin (`HEADS` / `TAILS`) |
-| `/roll [max]` | Roll a dice (default `1-100`) |
+| `/roll [max]` | Roll a dice (default `1-6`) |
 | `/pick <a, b, ...>` | Randomly pick one from options |
 | `/rps [r\|p\|s]` | Throw Rock, Paper, or Scissors (random if omitted) |
 | `/8ball <question>` | Ask the Magic 8-Ball |

@@ -65,7 +65,7 @@ const SLASH_COMMANDS: SlashCommandDef[] = [
 
   // 3. Mini-Games (Strict Syntax)
   { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
-  { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
+  { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-6)', needsArgs: false },
   { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from options', needsArgs: true },
   { cmd: '/rps', usage: '/rps [r|p|s]', desc: 'Throw Rock, Paper, or Scissors (random if omitted)', needsArgs: false },
   { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
@@ -448,7 +448,7 @@ class RevChatApp {
         return true;
       }
       case '/roll': {
-        let max = 100;
+        let max = 6;
         if (argStr) {
           const parsed = parseInt(argStr, 10);
           if (isNaN(parsed) || parsed < 2) {
@@ -748,6 +748,9 @@ class RevChatApp {
         const transportLabel = p.transport === 'local-broadcast' ? 'LOCAL' : 'WEBRTC';
         const rttLabel = p.rttMs !== null ? `${p.rttMs}ms` : '...';
         const isWhispering = this.whisperTarget?.peerId === p.peerId;
+        const peerCode = (
+          p.peerId.startsWith('revchat-p-') ? p.peerId.slice('revchat-p-'.length) : p.peerId
+        ).toUpperCase();
         return `
           <div class="peer-item">
             <div class="peer-meta">
@@ -759,14 +762,23 @@ class RevChatApp {
                 ${p.isRoomBeaconHolder ? `<span class="badge">HOST</span>` : ''}
               </div>
             </div>
-            <button
-              class="small ${isWhispering ? 'primary' : ''}"
-              data-whisper-id="${this.escapeAttr(p.peerId)}"
-              data-whisper-name="${this.escapeAttr(p.nickname)}"
-              title="Send private 1:1 message"
-            >
-              ${isWhispering ? 'DM ON' : 'DM'}
-            </button>
+            <div class="peer-actions" style="display:flex;gap:4px;align-items:center;">
+              <button
+                class="small"
+                data-copy-peer="${this.escapeAttr(peerCode)}"
+                title="Copy Peer Code (${this.escapeAttr(peerCode)})"
+              >
+                COPY
+              </button>
+              <button
+                class="small ${isWhispering ? 'primary' : ''}"
+                data-whisper-id="${this.escapeAttr(p.peerId)}"
+                data-whisper-name="${this.escapeAttr(p.nickname)}"
+                title="Send private 1:1 message"
+              >
+                ${isWhispering ? 'DM ON' : 'DM'}
+              </button>
+            </div>
           </div>
         `;
       })
@@ -1155,7 +1167,7 @@ class RevChatApp {
                 <div class="help-group">
                   <div class="help-group-title">3. Mini-Games (Strict Syntax)</div>
                   <div class="help-cmd-row"><code>/coin</code><span>Flip a coin (HEADS / TAILS)</span></div>
-                  <div class="help-cmd-row"><code>/roll [max]</code><span>Roll a dice (default 1-100)</span></div>
+                  <div class="help-cmd-row"><code>/roll [max]</code><span>Roll a dice (default 1-6)</span></div>
                   <div class="help-cmd-row"><code>/pick &lt;a, b, ...&gt;</code><span>Randomly pick one from options</span></div>
                   <div class="help-cmd-row"><code>/rps [r|p|s]</code><span>Throw Rock, Paper, or Scissors (random if omitted)</span></div>
                   <div class="help-cmd-row"><code>/8ball &lt;question&gt;</code><span>Ask the Magic 8-Ball</span></div>
@@ -1669,7 +1681,20 @@ class RevChatApp {
   private bindPeerItemEvents(): void {
     const peerContainer = this.root.querySelector('#peer-list-container');
     peerContainer?.addEventListener('click', (e) => {
-      const btn = (e.target as HTMLElement | null)?.closest('[data-whisper-id]');
+      const targetEl = e.target as HTMLElement | null;
+      if (!targetEl) return;
+
+      const copyBtn = targetEl.closest('[data-copy-peer]');
+      if (copyBtn) {
+        const code = copyBtn.getAttribute('data-copy-peer') || '';
+        if (code) {
+          navigator.clipboard?.writeText(code);
+          this.showToast('Peer code copied!');
+        }
+        return;
+      }
+
+      const btn = targetEl.closest('[data-whisper-id]');
       if (!btn) return;
       const peerId = btn.getAttribute('data-whisper-id') || '';
       const nickname = btn.getAttribute('data-whisper-name') || 'peer';
