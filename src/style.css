@@ -416,12 +416,13 @@ button.small {
   gap: 6px;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--fg);
+  color: var(--fg-muted);
 }
 
 .empty-principles b,
 .help-principles b {
-  color: var(--accent);
+  color: var(--fg);
+  font-weight: 700;
 }
 
 .empty-hint {
@@ -766,7 +767,7 @@ button.small {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 13px;
-  color: var(--accent);
+  color: var(--fg);
   border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
   text-transform: uppercase;
