@@ -798,17 +798,20 @@ button.small {
   align-items: center;
   font-family: var(--font-mono);
   font-size: 13px;
-  gap: 8px;
+  gap: 12px;
+  padding: 2px 0;
 }
 
 .help-cmd-row code {
   color: var(--fg);
+  white-space: nowrap;
 }
 
 .help-cmd-row span {
   color: var(--fg-muted);
   font-size: 12px;
   text-align: right;
+  word-break: break-word;
 }
 
 .help-emotes-chips {

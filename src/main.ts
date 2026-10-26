@@ -54,25 +54,25 @@ const FONT_SIZES: Record<'s' | 'm' | 'l', { label: string; px: string }> = {
 };
 
 const SLASH_COMMANDS: SlashCommandDef[] = [
-  // Core Settings
-  { cmd: '/nick', usage: '/nick <name>', desc: 'Change your nickname', needsArgs: true },
+  // 1. Core Settings
+  { cmd: '/nick', usage: '/nick <name>', desc: 'Change your display nickname', needsArgs: true },
   { cmd: '/room', usage: '/room [code]', desc: 'Switch room (or random room if omitted)', needsArgs: false },
   { cmd: '/follow', usage: '/follow <code>', desc: 'Follow a peer into their active room', needsArgs: true },
 
-  // Chat Expression
-  { cmd: '/bold', usage: '/bold <text>', desc: 'Send bold message', needsArgs: true },
-  { cmd: '/italic', usage: '/italic <text>', desc: 'Send italic message', needsArgs: true },
+  // 2. Chat Expression
+  { cmd: '/bold', usage: '/bold <text>', desc: 'Send bold message (**text**)', needsArgs: true },
+  { cmd: '/italic', usage: '/italic <text>', desc: 'Send italic message (*text*)', needsArgs: true },
 
-  // Mini-Games (Strict)
+  // 3. Mini-Games (Strict Syntax)
   { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
   { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-100)', needsArgs: false },
   { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from options', needsArgs: true },
   { cmd: '/rps', usage: '/rps [r|p|s]', desc: 'Throw Rock, Paper, or Scissors (random if omitted)', needsArgs: false },
   { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
 
-  // ASCII Emotes
-  { cmd: '/rev', usage: '/rev', desc: '(ง ͡° ͜ʖ ͡°)ง🏴', needsArgs: false },
-  { cmd: '/revrev', usage: '/revrev', desc: '🚩( ͡° ͜ʖ ͡°)🚩', needsArgs: false },
+  // 4. ASCII Emotes (In-place)
+  { cmd: '/rev', usage: '/rev', desc: '(ง ͡° ͜ʖ ͡°)ง🏴 (Signature)', needsArgs: false },
+  { cmd: '/revrev', usage: '/revrev', desc: '🚩( ͡° ͜ʖ ͡°)🚩 (Signature)', needsArgs: false },
   { cmd: '/shrug', usage: '/shrug', desc: '¯\\_(ツ)_/¯', needsArgs: false },
   { cmd: '/flip', usage: '/flip', desc: '(╯°□°）╯︵ ┻━┻', needsArgs: false },
   { cmd: '/unflip', usage: '/unflip', desc: '┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
@@ -84,10 +84,10 @@ const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: '/love', usage: '/love', desc: '(｡♥‿♥｡)', needsArgs: false },
   { cmd: '/dance', usage: '/dance', desc: '♪┏(・o･)┛♪', needsArgs: false },
 
-  // Utility & Appearance
+  // 5. Utility & Appearance
   { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
-  { cmd: '/size', usage: '/size [s|m|l]', desc: 'Change font size (or cycle)', needsArgs: false },
-  { cmd: '/theme', usage: '/theme [dark|light]', desc: 'Switch theme (dark or light)', needsArgs: false },
+  { cmd: '/size', usage: '/size [s|m|l]', desc: 'Change main panel font size', needsArgs: false },
+  { cmd: '/theme', usage: '/theme [dark|light]', desc: 'Switch theme (aliases: /dark, /light)', needsArgs: false },
   { cmd: '/dark', usage: '/dark', desc: 'Switch to dark theme', needsArgs: false },
   { cmd: '/light', usage: '/light', desc: 'Switch to light theme', needsArgs: false },
   { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
@@ -1142,57 +1142,55 @@ class RevChatApp {
                 <div class="help-section-title">Commands</div>
                 
                 <div class="help-group">
-                  <div class="help-group-title">Core Settings</div>
-                  <div class="help-cmd-row"><code>/nick &lt;name&gt;</code><span>Change your nickname</span></div>
-                  <div class="help-cmd-row"><code>/room [code]</code><span>Switch room (or random)</span></div>
-                  <div class="help-cmd-row"><code>/follow &lt;code&gt;</code><span>Follow peer into room</span></div>
+                  <div class="help-group-title">1. Core Settings</div>
+                  <div class="help-cmd-row"><code>/nick &lt;name&gt;</code><span>Change your display nickname</span></div>
+                  <div class="help-cmd-row"><code>/room [code]</code><span>Switch room (or random room if omitted)</span></div>
+                  <div class="help-cmd-row"><code>/follow &lt;code&gt;</code><span>Follow a peer into their active room</span></div>
                 </div>
 
                 <div class="help-group">
-                  <div class="help-group-title">Chat Expression</div>
-                  <div class="help-cmd-row"><code>/bold &lt;text&gt;</code><span>Send bold text (**text**)</span></div>
-                  <div class="help-cmd-row"><code>/italic &lt;text&gt;</code><span>Send italic text (*text*)</span></div>
+                  <div class="help-group-title">2. Chat Expression</div>
+                  <div class="help-cmd-row"><code>/bold &lt;text&gt;</code><span>Send bold message (**text**)</span></div>
+                  <div class="help-cmd-row"><code>/italic &lt;text&gt;</code><span>Send italic message (*text*)</span></div>
                 </div>
 
                 <div class="help-group">
-                  <div class="help-group-title">Mini-Games (Strict Syntax)</div>
-                  <div class="help-cmd-row"><code>/coin</code><span>Flip coin (HEADS / TAILS)</span></div>
-                  <div class="help-cmd-row"><code>/roll [max]</code><span>Roll dice (default 1-100)</span></div>
-                  <div class="help-cmd-row"><code>/rps [r|p|s]</code><span>Rock, Paper, Scissors (random if omitted)</span></div>
-                  <div class="help-cmd-row"><code>/pick &lt;a, b, ...&gt;</code><span>Pick random option</span></div>
+                  <div class="help-group-title">3. Mini-Games (Strict Syntax)</div>
+                  <div class="help-cmd-row"><code>/coin</code><span>Flip a coin (HEADS / TAILS)</span></div>
+                  <div class="help-cmd-row"><code>/roll [max]</code><span>Roll a dice (default 1-100)</span></div>
+                  <div class="help-cmd-row"><code>/pick &lt;a, b, ...&gt;</code><span>Randomly pick one from options</span></div>
+                  <div class="help-cmd-row"><code>/rps [r|p|s]</code><span>Throw Rock, Paper, or Scissors (random if omitted)</span></div>
                   <div class="help-cmd-row"><code>/8ball &lt;question&gt;</code><span>Ask the Magic 8-Ball</span></div>
                 </div>
 
                 <div class="help-group">
-                  <div class="help-group-title">ASCII Emotes (In-place)</div>
-                  <div class="help-emotes-chips">
-                    <code>/rev 🏴</code>
-                    <code>/revrev 🚩</code>
-                    <code>/shrug</code>
-                    <code>/flip</code>
-                    <code>/unflip</code>
-                    <code>/lenny</code>
-                    <code>/look</code>
-                    <code>/gib</code>
-                    <code>/fight</code>
-                    <code>/cry</code>
-                    <code>/love</code>
-                    <code>/dance</code>
-                  </div>
+                  <div class="help-group-title">4. ASCII Emotes (In-place)</div>
+                  <div class="help-cmd-row"><code>/rev</code><span>(ง ͡° ͜ʖ ͡°)ง🏴 (Signature)</span></div>
+                  <div class="help-cmd-row"><code>/revrev</code><span>🚩( ͡° ͜ʖ ͡°)🚩 (Signature)</span></div>
+                  <div class="help-cmd-row"><code>/shrug</code><span>¯\\_(ツ)_/¯</span></div>
+                  <div class="help-cmd-row"><code>/flip</code><span>(╯°□°）╯︵ ┻━┻</span></div>
+                  <div class="help-cmd-row"><code>/unflip</code><span>┬─┬ ノ( ゜-゜ノ)</span></div>
+                  <div class="help-cmd-row"><code>/lenny</code><span>( ͡° ͜ʖ ͡°)</span></div>
+                  <div class="help-cmd-row"><code>/look</code><span>ಠ_ಠ</span></div>
+                  <div class="help-cmd-row"><code>/gib</code><span>༼ つ ◕_◕ ༽つ</span></div>
+                  <div class="help-cmd-row"><code>/fight</code><span>(ง'̀-'́)ง</span></div>
+                  <div class="help-cmd-row"><code>/cry</code><span>(ಥ﹏ಥ)</span></div>
+                  <div class="help-cmd-row"><code>/love</code><span>(｡♥‿♥｡)</span></div>
+                  <div class="help-cmd-row"><code>/dance</code><span>♪┏(・o･)┛♪</span></div>
                 </div>
 
                 <div class="help-group">
-                  <div class="help-group-title">Utility & Appearance</div>
+                  <div class="help-group-title">5. Utility & Appearance</div>
                   <div class="help-cmd-row"><code>/clear</code><span>Clear local chat view</span></div>
-                  <div class="help-cmd-row"><code>/size [s|m|l]</code><span>Change font size (or cycle)</span></div>
-                  <div class="help-cmd-row"><code>/theme [dark|light]</code><span>Switch theme (or /dark, /light)</span></div>
-                  <div class="help-cmd-row"><code>/help</code><span>Open this guide</span></div>
+                  <div class="help-cmd-row"><code>/size [s|m|l]</code><span>Change main panel font size</span></div>
+                  <div class="help-cmd-row"><code>/theme [dark|light]</code><span>Switch theme (aliases: /dark, /light)</span></div>
+                  <div class="help-cmd-row"><code>/help</code><span>Open commands & help guide</span></div>
                 </div>
 
                 <div class="help-group">
-                  <div class="help-group-title">Mentions</div>
-                  <div class="help-cmd-row"><code>@&lt;nickname&gt;</code><span>Mention peer in room</span></div>
-                  <div class="help-cmd-row"><code>@me</code><span>Auto-expand your nickname</span></div>
+                  <div class="help-group-title">6. Mentions</div>
+                  <div class="help-cmd-row"><code>@&lt;nickname&gt;</code><span>Mention a peer in the room</span></div>
+                  <div class="help-cmd-row"><code>@me</code><span>Automatically expands to your current nickname</span></div>
                 </div>
               </div>
             </div>

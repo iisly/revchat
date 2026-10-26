@@ -1,20 +1,14 @@
 # revchat
 
-Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
-
-## Features
-
-- **Direct P2P Mesh**: Connect via room codes (`LOBBY`), peer follow codes (`FOLLOW`), shareable links, or QR codes.
-- **Zero Storage**: No database, no chat logs on servers, and no `localStorage` persistence—everything lives strictly in memory and disappears when you close the tab.
-- **Desktop & Mobile Ready**: Clean split layout on desktop and adaptive viewport drawer on mobile.
+Minimal, ephemeral P2P chat built with TypeScript, Vite, WebRTC and PeerJS.
 
 ## How revchat works
 
 - **Connect:** Enter a Room Code (or scan QR) to link via WebRTC.
 - **Follow:** Paste a friend’s Peer Code to jump straight into their room.
-- **Zero Traces:** No disk, no logs. Close the tab, and destroy everything.
+- **Stateless:** No disk, no logs. Close the tab, and destroy everything.
 
-## Slash Commands
+## Commands
 
 ### 1. Core Settings
 | Command | Description |
@@ -62,7 +56,7 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, and WebRTC.
 | `/theme [dark\|light]` | Switch theme (aliases: `/dark`, `/light`) |
 | `/help` | Open commands & help guide |
 
-### Mentions
+### 6. Mentions
 | Trigger | Description |
 | :--- | :--- |
 | `@<nickname>` | Mention a peer in the room |
