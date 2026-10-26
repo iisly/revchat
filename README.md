@@ -4,8 +4,8 @@ Minimal, ephemeral P2P chat built with TypeScript, Vite, WebRTC and PeerJS.
 
 ## How revchat works
 
-- **Connect:** Enter a Room Code (or scan QR) to link via WebRTC.
-- **Follow:** Paste a friend’s Peer Code to jump straight into their room.
+- **Connect:** Join by Room using Room Code or QR/link.
+- **Follow:** Join Peer's room directly using their Peer Code.
 - **Stateless:** No disk, no logs. Close the tab, and destroy everything.
 
 ## Commands

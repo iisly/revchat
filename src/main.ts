@@ -563,10 +563,10 @@ class RevChatApp {
         <div class="drawer-backdrop" id="drawer-backdrop" style="display:${this.mobileDrawerOpen ? 'block' : 'none'};"></div>
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
-            <div class="brand" id="brand-logo" title="Reload revchat">
+            <a href="./" class="brand" id="brand-logo" title="revchat // p2p">
               <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
               <span>revchat // p2p</span>
-            </div>
+            </a>
             <button class="small mobile-only" id="btn-close-drawer">✕</button>
           </div>
 
@@ -796,8 +796,8 @@ class RevChatApp {
           (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
           <div class="empty-header">#${this.escapeHtml(this.roomId)} — P2P Channel Ready</div>
           <div class="empty-principles">
-            <div><b>Connect:</b> Enter a Room Code (or scan QR) to link via WebRTC.</div>
-            <div><b>Follow:</b> Paste a friend’s Peer Code to jump straight into their room.</div>
+            <div><b>Connect:</b> Join by Room using Room Code or QR/link.</div>
+            <div><b>Follow:</b> Join Peer's room directly using their Peer Code.</div>
             <div><b>Stateless:</b> No disk, no logs. Close the tab, and destroy everything.</div>
           </div>
           <div class="empty-hint">Type <code>/help</code> for commands or <code>@</code> to mention.</div>
@@ -1132,8 +1132,8 @@ class RevChatApp {
               <div class="help-section">
                 <div class="help-section-title">How revchat works</div>
                 <div class="help-principles">
-                  <div><b>Connect:</b> Enter a Room Code (or scan QR) to link via WebRTC.</div>
-                  <div><b>Follow:</b> Paste a friend’s Peer Code to jump straight into their room.</div>
+                  <div><b>Connect:</b> Join by Room using Room Code or QR/link.</div>
+                  <div><b>Follow:</b> Join Peer's room directly using their Peer Code.</div>
                   <div><b>Stateless:</b> No disk, no logs. Close the tab, and destroy everything.</div>
                 </div>
               </div>
@@ -1215,8 +1215,13 @@ class RevChatApp {
   // EVENT BINDINGS
   // =========================================================================
   private bindEvents(): void {
-    // Brand logo reload & Mobile drawer controls
-    this.root.querySelector('#brand-logo')?.addEventListener('click', () => {
+    // Brand logo reload & navigation (supports Ctrl/Cmd/Wheel click for new tab like YouTube)
+    this.root.querySelector('#brand-logo')?.addEventListener('click', (e) => {
+      const me = e as MouseEvent;
+      if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) {
+        return;
+      }
+      e.preventDefault();
       window.location.reload();
     });
     this.root.querySelector('#btn-open-drawer')?.addEventListener('click', () => {

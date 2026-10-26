@@ -115,6 +115,9 @@ body {
   gap: 8px;
   font-size: 15px;
   cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  user-select: none;
 }
 
 .status-dot {
