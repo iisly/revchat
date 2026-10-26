@@ -21,10 +21,11 @@ import {
 
 const PEER_PREFIX = 'revchat-p-';
 const ROOM_BEACON_PREFIX = 'revchat-r-';
-const SEEN_PACKET_LIMIT = 1500;
-const PING_INTERVAL_MS = 4000;
-const PEER_TIMEOUT_MS = 12000;
-const OUTBOX_TTL_MS = 12000;
+const SEEN_PACKET_LIMIT = 3000;
+const PING_INTERVAL_MS = 3000;
+const PEER_TIMEOUT_MS = 15000;
+const OUTBOX_TTL_MS = 15000;
+const TYPING_SAFETY_TIMEOUT_MS = 4000;
 
 const RTC_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
@@ -1138,7 +1139,7 @@ export class P2PEngine {
     const timer = window.setTimeout(() => {
       this.typingMap.delete(peerId);
       this.emitTypingChange();
-    }, 3800);
+    }, TYPING_SAFETY_TIMEOUT_MS);
     this.typingMap.set(peerId, { nickname, timer });
     this.emitTypingChange();
   }
