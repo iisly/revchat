@@ -360,14 +360,10 @@ export class P2PEngine {
         }
         this.emitSignalingState();
         if (errType === 'unavailable-id') {
-          if (this.isNextBeaconCandidate()) {
-            // Coordinator may have just closed; signaling broker can take ~1s to clear the socket.
-            window.setTimeout(() => {
-              if (!this.destroyed && !this.isBeaconHost && this.roomId === roomId) {
-                this.ensureBeaconRole();
-              }
-            }, 1000);
-          } else {
+          // If another peer is the coordinator candidate, connect to them.
+          // If we are the candidate (e.g. coordinator tab just closed), the regular
+          // heartbeat tick will claim the beacon role as soon as the broker frees the ID.
+          if (!this.isNextBeaconCandidate()) {
             this.connectToRoomBeacon(roomId);
           }
         }
