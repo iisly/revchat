@@ -793,12 +793,12 @@ class RevChatApp {
  | |_) |  _| | | | | |   | |_| | / _ \\ | |  
  |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
  |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-               🚩( ͡° ͜ʖ ͡°)🚩</pre>
+          (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
           <div class="empty-header">#${this.escapeHtml(this.roomId)} — P2P Channel Ready</div>
           <div class="empty-principles">
             <div><b>Connect:</b> Enter a Room Code (or scan QR) to link via WebRTC.</div>
             <div><b>Follow:</b> Paste a friend’s Peer Code to jump straight into their room.</div>
-            <div><b>Zero Traces:</b> No disk, no logs. Close the tab, and destroy everything.</div>
+            <div><b>Stateless:</b> No disk, no logs. Close the tab, and destroy everything.</div>
           </div>
           <div class="empty-hint">Type <code>/help</code> for commands or <code>@</code> to mention.</div>
         </div>
@@ -1127,19 +1127,19 @@ class RevChatApp {
  | |_) |  _| | | | | |   | |_| | / _ \\ | |  
  |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
  |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-               🚩( ͡° ͜ʖ ͡°)🚩</pre>
+          (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
 
               <div class="help-section">
                 <div class="help-section-title">How revchat works</div>
                 <div class="help-principles">
                   <div><b>Connect:</b> Enter a Room Code (or scan QR) to link via WebRTC.</div>
                   <div><b>Follow:</b> Paste a friend’s Peer Code to jump straight into their room.</div>
-                  <div><b>Zero Traces:</b> No disk, no logs. Close the tab, and destroy everything.</div>
+                  <div><b>Stateless:</b> No disk, no logs. Close the tab, and destroy everything.</div>
                 </div>
               </div>
 
               <div class="help-section">
-                <div class="help-section-title">Slash Commands</div>
+                <div class="help-section-title">Commands</div>
                 
                 <div class="help-group">
                   <div class="help-group-title">Core Settings</div>
@@ -1155,7 +1155,7 @@ class RevChatApp {
                 </div>
 
                 <div class="help-group">
-                  <div class="help-group-title">Mini-Games</div>
+                  <div class="help-group-title">Mini-Games (Strict Syntax)</div>
                   <div class="help-cmd-row"><code>/coin</code><span>Flip coin (HEADS / TAILS)</span></div>
                   <div class="help-cmd-row"><code>/roll [max]</code><span>Roll dice (default 1-100)</span></div>
                   <div class="help-cmd-row"><code>/rps [r|p|s]</code><span>Rock, Paper, Scissors (random if omitted)</span></div>
