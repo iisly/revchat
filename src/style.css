@@ -514,8 +514,11 @@ button.small {
 .msg-whisper-line {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  color: var(--warn);
-  margin-bottom: 2px;
+  color: var(--fg-muted);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .msg-quote {
