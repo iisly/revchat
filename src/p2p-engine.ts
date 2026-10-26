@@ -266,12 +266,7 @@ export class P2PEngine {
           this.initPersonalPeer();
           return;
         }
-        if (errType === 'peer-unavailable') {
-          if (!this.isBeaconHost && this.isNextBeaconCandidate()) {
-            this.ensureBeaconRole();
-          }
-          return;
-        }
+        if (errType === 'peer-unavailable') return;
         this.signalingError = err?.message || String(err);
         if (this.signalingStatus === 'initializing') {
           this.signalingStatus = 'offline';
@@ -361,12 +356,7 @@ export class P2PEngine {
         }
         this.emitSignalingState();
         if (errType === 'unavailable-id') {
-          // If another peer is the coordinator candidate, connect to them.
-          // If we are the candidate (e.g. coordinator tab just closed), the regular
-          // heartbeat tick will claim the beacon role as soon as the broker frees the ID.
-          if (!this.isNextBeaconCandidate()) {
-            this.connectToRoomBeacon(roomId);
-          }
+          this.connectToRoomBeacon(roomId);
         }
       });
     } catch {
@@ -575,25 +565,6 @@ export class P2PEngine {
       } else {
         if (this.peerConnections.get(remotePeerId) === conn) {
           this.peerConnections.delete(remotePeerId);
-        }
-        const peerInfo = this.peers.get(remotePeerId);
-        if (peerInfo) {
-          this.peers.delete(remotePeerId);
-          this.clearPeerTyping(remotePeerId);
-          this.emitPeersChange();
-          if (peerInfo.isRoomBeaconHolder || (!this.isBeaconHost && this.peers.size === 0)) {
-            const beaconId = this.getBeaconIdForRoom(this.roomId);
-            const beaconConn = this.beaconConnections.get(beaconId);
-            if (beaconConn) {
-              try {
-                beaconConn.close();
-              } catch {
-                // ignore
-              }
-              this.beaconConnections.delete(beaconId);
-            }
-            this.ensureBeaconRole();
-          }
         }
       }
     };
