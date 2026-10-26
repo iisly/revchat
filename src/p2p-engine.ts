@@ -265,7 +265,12 @@ export class P2PEngine {
           this.initPersonalPeer();
           return;
         }
-        if (errType === 'peer-unavailable') return;
+        if (errType === 'peer-unavailable') {
+          if (!this.isBeaconHost && this.isNextBeaconCandidate()) {
+            this.ensureBeaconRole();
+          }
+          return;
+        }
         this.signalingError = err?.message || String(err);
         if (this.signalingStatus === 'initializing') {
           this.signalingStatus = 'offline';
@@ -355,7 +360,16 @@ export class P2PEngine {
         }
         this.emitSignalingState();
         if (errType === 'unavailable-id') {
-          this.connectToRoomBeacon(roomId);
+          if (this.isNextBeaconCandidate()) {
+            // Coordinator may have just closed; signaling broker can take ~1s to clear the socket.
+            window.setTimeout(() => {
+              if (!this.destroyed && !this.isBeaconHost && this.roomId === roomId) {
+                this.ensureBeaconRole();
+              }
+            }, 1000);
+          } else {
+            this.connectToRoomBeacon(roomId);
+          }
         }
       });
     } catch {
@@ -564,6 +578,25 @@ export class P2PEngine {
       } else {
         if (this.peerConnections.get(remotePeerId) === conn) {
           this.peerConnections.delete(remotePeerId);
+        }
+        const peerInfo = this.peers.get(remotePeerId);
+        if (peerInfo) {
+          this.peers.delete(remotePeerId);
+          this.clearPeerTyping(remotePeerId);
+          this.emitPeersChange();
+          if (peerInfo.isRoomBeaconHolder || (!this.isBeaconHost && this.peers.size === 0)) {
+            const beaconId = this.getBeaconIdForRoom(this.roomId);
+            const beaconConn = this.beaconConnections.get(beaconId);
+            if (beaconConn) {
+              try {
+                beaconConn.close();
+              } catch {
+                // ignore
+              }
+              this.beaconConnections.delete(beaconId);
+            }
+            this.ensureBeaconRole();
+          }
         }
       }
     };
@@ -779,11 +812,15 @@ export class P2PEngine {
     if (this.markPacketSeen(packet.packetId)) return;
 
     if (packet.type !== 'LEAVE') {
+      const isHostPayload =
+        typeof packet.payload?.isBeaconHost === 'boolean'
+          ? packet.payload.isBeaconHost
+          : undefined;
       this.upsertPeer(
         packet.senderId,
         packet.senderName,
         transport,
-        Boolean(packet.payload?.isBeaconHost)
+        isHostPayload
       );
     }
 
@@ -795,15 +832,19 @@ export class P2PEngine {
     switch (packet.type) {
       case 'HELLO': {
         const nick = sanitizeString(packet.payload?.nickname, MAX_NICKNAME_LENGTH, packet.senderName);
+        const isHostPayload =
+          typeof packet.payload?.isBeaconHost === 'boolean'
+            ? packet.payload.isBeaconHost
+            : undefined;
         this.upsertPeer(
           packet.senderId,
           nick,
           transport,
-          Boolean(packet.payload?.isBeaconHost)
+          isHostPayload
         );
         const pong = this.createPacket(
           'PONG',
-          { targetId: packet.senderId, sentAt: packet.timestamp },
+          { targetId: packet.senderId, sentAt: packet.timestamp, isBeaconHost: this.isBeaconHost },
           1
         );
         this.dispatchPacketToAll(pong);
@@ -871,7 +912,11 @@ export class P2PEngine {
       case 'PING': {
         const pong = this.createPacket(
           'PONG',
-          { targetId: packet.senderId, sentAt: Number(packet.payload?.sentAt) || packet.timestamp },
+          {
+            targetId: packet.senderId,
+            sentAt: Number(packet.payload?.sentAt) || packet.timestamp,
+            isBeaconHost: this.isBeaconHost,
+          },
           1
         );
         this.dispatchPacketToAll(pong);
@@ -922,25 +967,31 @@ export class P2PEngine {
           }
           this.peerConnections.delete(packet.senderId);
         }
-        const beaconConn = this.beaconConnections.get(packet.senderId);
-        if (beaconConn) {
-          try {
-            beaconConn.close();
-          } catch {
-            // ignore
-          }
-          this.beaconConnections.delete(packet.senderId);
-        }
         const existing = this.peers.get(packet.senderId);
+        const wasCoordinator = Boolean(existing?.isRoomBeaconHolder);
+
         if (existing) {
           this.peers.delete(packet.senderId);
           this.clearPeerTyping(packet.senderId);
           this.emitPeersChange();
           this.callbacks.onSystemLog(`${existing.nickname} left the room.`);
-          // Coordinator left gracefully (tab closed): hand over immediately.
-          if (existing.isRoomBeaconHolder) {
-            this.ensureBeaconRole();
+        }
+
+        // Clean up beacon connection to the old coordinator if they left.
+        const beaconId = this.getBeaconIdForRoom(this.roomId);
+        const beaconConn = this.beaconConnections.get(beaconId);
+        if (beaconConn && (wasCoordinator || this.peers.size === 0)) {
+          try {
+            beaconConn.close();
+          } catch {
+            // ignore
           }
+          this.beaconConnections.delete(beaconId);
+        }
+
+        // Coordinator left gracefully (tab closed): hand over immediately.
+        if (wasCoordinator || (!this.isBeaconHost && this.peers.size === 0)) {
+          this.ensureBeaconRole();
         }
         break;
       }
@@ -1041,7 +1092,7 @@ export class P2PEngine {
     this.rateLimiter.prune();
     this.pruneDeadConnections();
     const now = Date.now();
-    this.broadcastPacket('PING', { sentAt: now }, 1);
+    this.broadcastPacket('PING', { sentAt: now, isBeaconHost: this.isBeaconHost }, 1);
 
     for (const [id, entry] of this.pendingOutbox.entries()) {
       if (now - entry.createdAt > OUTBOX_TTL_MS || entry.msg.roomId !== this.roomId) {
