@@ -234,11 +234,7 @@ export class P2PEngine {
         this.signalingError = undefined;
         this.emitSignalingState();
 
-        if (!this.isBeaconHost && !this.beaconPeer && !this.beaconInitializing) {
-          this.initRoomBeaconOrJoin(this.roomId);
-        } else if (!this.isBeaconHost) {
-          this.connectToRoomBeacon(this.roomId);
-        }
+        this.ensureBeaconRole();
       });
 
       peer.on('connection', (conn) => {
@@ -320,6 +316,8 @@ export class P2PEngine {
         }
         this.isBeaconHost = true;
         this.emitSignalingState();
+        // Announce the new coordinator so peers update their host flag.
+        this.sendHelloPacket();
         this.callbacks.onSystemLog(`Room [${roomId}] ready (acting as room coordinator).`);
       });
 
@@ -559,6 +557,10 @@ export class P2PEngine {
         if (this.beaconConnections.get(remotePeerId) === conn) {
           this.beaconConnections.delete(remotePeerId);
         }
+        // Lost our link to the coordinator: elect/claim a new one right away.
+        if (!this.isBeaconHost) {
+          this.ensureBeaconRole();
+        }
       } else {
         if (this.peerConnections.get(remotePeerId) === conn) {
           this.peerConnections.delete(remotePeerId);
@@ -647,24 +649,60 @@ export class P2PEngine {
       }
     }
 
-    if (this.signalingStatus === 'ready') {
-      if (this.isBeaconHost) {
-        if (!this.beaconPeer || this.beaconPeer.destroyed) {
-          this.initRoomBeaconOrJoin(this.roomId);
-        } else if (this.beaconPeer.disconnected) {
-          try {
-            this.beaconPeer.reconnect();
-          } catch {
-            this.initRoomBeaconOrJoin(this.roomId);
-          }
-        }
-      } else if (!this.beaconInitializing && this.beaconConnections.size === 0) {
-        this.connectToRoomBeacon(this.roomId);
-      }
-    }
+    this.ensureBeaconRole();
 
     this.sendHelloPacket();
     this.flushPendingOutbox();
+  }
+
+  /**
+   * Keeps exactly one room coordinator (beacon host) alive without timeouts or device bias.
+   * - If we own the beacon: keep it (reconnect if its signaling socket dropped).
+   * - If our link to the coordinator is alive: nothing to do.
+   * - Otherwise the coordinator is gone: the live peer with the lowest Peer ID claims the
+   *   beacon ID. The signaling server is the final arbiter: if the ID is still taken, the
+   *   claim fails with `unavailable-id` and we simply connect to whoever holds it.
+   */
+  private ensureBeaconRole(): void {
+    if (this.destroyed || this.signalingStatus !== 'ready') return;
+
+    if (this.beaconPeer) {
+      if (this.beaconPeer.destroyed) {
+        this.beaconPeer = null;
+        this.isBeaconHost = false;
+      } else if (this.beaconPeer.disconnected) {
+        try {
+          this.beaconPeer.reconnect();
+        } catch {
+          this.beaconPeer = null;
+          this.isBeaconHost = false;
+        }
+        if (this.beaconPeer) return;
+      } else {
+        return; // Beacon open (or still opening).
+      }
+    }
+    if (this.beaconInitializing) return;
+
+    const beaconId = this.getBeaconIdForRoom(this.roomId);
+    if (this.isConnAlive(this.beaconConnections.get(beaconId))) return;
+
+    if (this.isNextBeaconCandidate()) {
+      this.initRoomBeaconOrJoin(this.roomId);
+    } else {
+      this.connectToRoomBeacon(this.roomId);
+    }
+  }
+
+  /** Deterministic election: lowest Peer ID among live, non-coordinator peers (including me). */
+  private isNextBeaconCandidate(): boolean {
+    for (const [id, info] of this.peers.entries()) {
+      if (info.isRoomBeaconHolder) continue;
+      const alive =
+        info.transport === 'local-broadcast' || this.isConnAlive(this.peerConnections.get(id));
+      if (alive && id < this.myPeerId) return false;
+    }
+    return true;
   }
 
   private markPacketSeen(packetId: string): boolean {
@@ -899,6 +937,10 @@ export class P2PEngine {
           this.clearPeerTyping(packet.senderId);
           this.emitPeersChange();
           this.callbacks.onSystemLog(`${existing.nickname} left the room.`);
+          // Coordinator left gracefully (tab closed): hand over immediately.
+          if (existing.isRoomBeaconHolder) {
+            this.ensureBeaconRole();
+          }
         }
         break;
       }
@@ -1027,6 +1069,10 @@ export class P2PEngine {
     if (changed) {
       this.emitPeersChange();
     }
+
+    // Piggyback on the existing heartbeat tick (no extra timers): if the coordinator
+    // silently vanished (e.g. phone screen off), take over or reconnect automatically.
+    this.ensureBeaconRole();
   }
 
   private broadcastLeave(): void {
