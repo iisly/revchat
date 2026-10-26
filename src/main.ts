@@ -738,9 +738,7 @@ class RevChatApp {
     if (this.peers.length === 0) {
       return `
         <div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);padding:8px 0;">
-          No remote peers connected yet.<br/>
-          • Open another tab to test instant local mesh<br/>
-          • Or share <b>QR/LINK</b> with mobile/desktop
+          No remote peers connected yet.
         </div>
       `;
     }
@@ -794,13 +792,13 @@ class RevChatApp {
  |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
  |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
           (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
-          <div class="empty-header">#${this.escapeHtml(this.roomId)} — P2P Channel Ready</div>
+          <div class="empty-header">How revchat works</div>
           <div class="empty-principles">
             <div><b>Connect:</b> Join by Room using Room Code or QR/link.</div>
             <div><b>Follow:</b> Join Peer's room directly using their Peer Code.</div>
             <div><b>Stateless:</b> No disk, no logs. Close the tab, and destroy everything.</div>
           </div>
-          <div class="empty-hint">Type <code>/help</code> for commands or <code>@</code> to mention.</div>
+          <div class="empty-hint">Need help? Type <code>/help</code></div>
         </div>
       `;
     }
