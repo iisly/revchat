@@ -511,6 +511,10 @@ button.small {
   opacity: 0.75;
 }
 
+.msg-whisper-tag {
+  margin: 2px 0 4px 0;
+}
+
 .msg-quote {
   font-family: var(--font-mono);
   font-size: 0.85em;

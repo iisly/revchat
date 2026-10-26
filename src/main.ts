@@ -776,7 +776,7 @@ class RevChatApp {
                 data-whisper-name="${this.escapeAttr(p.nickname)}"
                 title="Send private 1:1 message"
               >
-                ${isWhispering ? 'DM ON' : 'DM'}
+                DM
               </button>
             </div>
           </div>
@@ -838,10 +838,6 @@ class RevChatApp {
       m.senderId === this.signalingState.myPeerId ||
       m.senderId.startsWith(`revchat-p-${this.profile.clientId.toLowerCase()}`);
 
-    const whisperTag = m.targetPeerId
-      ? `<span class="badge">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</span> `
-      : '';
-
     const ackText = isSelf
       ? m.ackedBy.length > 0
         ? `✓✓ ${m.ackedBy.length}`
@@ -853,7 +849,6 @@ class RevChatApp {
         <div class="msg-header">
           <div>
             <span class="msg-author ${isSelf ? 'self' : ''}">${this.escapeHtml(m.senderName)}</span>
-            ${whisperTag}
             <span class="msg-time">${timeStr}</span>
           </div>
           <div class="msg-meta-right">
@@ -879,6 +874,11 @@ class RevChatApp {
             </button>
           </div>
         </div>
+        ${
+          m.targetPeerId
+            ? `<div class="msg-whisper-tag"><span class="badge">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</span></div>`
+            : ''
+        }
         ${
           m.replyTo
             ? `<div class="msg-quote">@${this.escapeHtml(m.replyTo.senderName)}: ${this.escapeHtml(m.replyTo.text)}</div>`
