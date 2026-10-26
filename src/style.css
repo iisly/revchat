@@ -471,12 +471,12 @@ button.small {
 
 .msg-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 0.82em;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .msg-author {
@@ -512,7 +512,10 @@ button.small {
 }
 
 .msg-whisper-tag {
-  margin: 2px 0 4px 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  margin: 1px 0 3px 0;
 }
 
 .msg-quote {
