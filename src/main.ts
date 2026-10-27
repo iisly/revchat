@@ -1134,8 +1134,8 @@ class RevChatApp {
                 <div class="help-section-title">How to Chat</div>
                 <div class="help-guide-card">
                   <div class="help-guide-lead">
-                    <b>You must be in the same room to talk.</b>
-                    <span class="help-guide-sub">No sign-up required. A Peer Code is generated the moment you enter.</span>
+                    <b>You get a fresh Peer Code every visit.</b>
+                    <span class="help-guide-sub">No sign-up required. Just enter the same room to talk.</span>
                   </div>
                   <div class="help-guide-steps">
                     <div class="help-step-item">
