@@ -1514,6 +1514,7 @@ class RevChatApp {
 
     this.bindPeerItemEvents();
     this.bindMessageStreamEvents();
+    this.bindMobileGestures();
     this.updateContextBannerDOM();
   }
 
@@ -1755,6 +1756,95 @@ class RevChatApp {
         (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
       }
     });
+  }
+
+  private bindMobileGestures(): void {
+    const layout = this.root.querySelector('.layout') as HTMLElement | null;
+    if (!layout) return;
+
+    let startX = 0;
+    let startY = 0;
+    let startTime = 0;
+    let validTouch = false;
+
+    layout.addEventListener(
+      'touchstart',
+      (e: TouchEvent) => {
+        if (window.innerWidth > 768) {
+          validTouch = false;
+          return;
+        }
+
+        if (e.touches.length !== 1) {
+          validTouch = false;
+          return;
+        }
+
+        if (this.activeModal !== 'none') {
+          validTouch = false;
+          return;
+        }
+
+        const target = e.target as HTMLElement | null;
+        if (!target) {
+          validTouch = false;
+          return;
+        }
+
+        if (target.closest('button, input, textarea, a, select, pre, code')) {
+          validTouch = false;
+          return;
+        }
+
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        startTime = Date.now();
+
+        if (!this.mobileDrawerOpen) {
+          const inChat = Boolean(target.closest('.chat-pane'));
+          const notEdge = startX > window.innerWidth * 0.05;
+          validTouch = inChat && notEdge;
+        } else {
+          validTouch = Boolean(target.closest('#sidebar, #drawer-backdrop'));
+        }
+      },
+      { passive: true }
+    );
+
+    layout.addEventListener(
+      'touchcancel',
+      () => {
+        validTouch = false;
+      },
+      { passive: true }
+    );
+
+    layout.addEventListener(
+      'touchend',
+      (e: TouchEvent) => {
+        if (!validTouch || e.changedTouches.length === 0) return;
+        validTouch = false;
+
+        const touch = e.changedTouches[0];
+        const deltaX = touch.clientX - startX;
+        const deltaY = touch.clientY - startY;
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+        const elapsed = Date.now() - startTime;
+
+        if (elapsed > 500 || absX < absY * 1.5) return;
+
+        const threshold = Math.max(45, window.innerWidth * 0.15);
+
+        if (!this.mobileDrawerOpen && deltaX > threshold) {
+          this.setMobileDrawerOpen(true);
+        } else if (this.mobileDrawerOpen && deltaX < -threshold) {
+          this.setMobileDrawerOpen(false);
+        }
+      },
+      { passive: true }
+    );
   }
 
   // =========================================================================

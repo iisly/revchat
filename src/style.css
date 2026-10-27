@@ -379,6 +379,7 @@ button.small {
   flex-direction: column;
   gap: 4px;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .empty-state {
