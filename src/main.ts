@@ -803,13 +803,8 @@ class RevChatApp {
  | |_) |  _| | | | | |   | |_| | / _ \\ | |  
  |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
  |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-          (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
+      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
           <div class="empty-header">#${this.escapeHtml(this.roomId)} — P2P Channel Ready</div>
-          <div class="empty-principles">
-            <div><b>Connect:</b> Join a room via Room Code or QR link.</div>
-            <div><b>Follow:</b> Jump into a friend's room via Peer Code.</div>
-            <div><b>Stateless:</b> No disk, no logs. Close the tab to wipe everything.</div>
-          </div>
           <div class="empty-hint">Need help? Type <code>/help</code></div>
         </div>
       `;
@@ -1081,14 +1076,10 @@ class RevChatApp {
                 </div>
               </div>
               <div class="step-block">
-                <div class="step-title">Room Code & Peer Code</div>
+                <div class="step-title">Room Code</div>
                 <div class="kv-line">
                   <span>Room Code:</span>
                   <code class="code-pill">${this.escapeHtml(this.roomId)}</code>
-                </div>
-                <div class="kv-line">
-                  <span>My Peer Code:</span>
-                  <code class="code-pill">${this.escapeHtml(this.profile.clientId.toUpperCase())}</code>
                 </div>
               </div>
             </div>
@@ -1137,14 +1128,41 @@ class RevChatApp {
  | |_) |  _| | | | | |   | |_| | / _ \\ | |  
  |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
  |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-          (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
+      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
 
               <div class="help-section">
-                <div class="help-section-title">How revchat works</div>
-                <div class="help-principles">
-                  <div><b>Connect:</b> Join a room via Room Code or QR link.</div>
-                  <div><b>Follow:</b> Jump into a friend's room via Peer Code.</div>
-                  <div><b>Stateless:</b> No disk, no logs. Close the tab to wipe everything.</div>
+                <div class="help-section-title">How to Chat</div>
+                <div class="help-guide-card">
+                  <div class="help-guide-lead">
+                    <b>You must be in the same room to talk.</b>
+                    <span class="help-guide-sub">No sign-up required. A Peer Code is generated the moment you enter.</span>
+                  </div>
+                  <div class="help-guide-steps">
+                    <div class="help-step-item">
+                      <span class="help-step-num">1</span>
+                      <div class="help-step-content">
+                        <b>Use the Same Room Code</b>
+                        <span>Tell your friends a room name. Anyone in the same room is connected instantly.</span>
+                      </div>
+                    </div>
+                    <div class="help-step-item">
+                      <span class="help-step-num">2</span>
+                      <div class="help-step-content">
+                        <b>Or Share Room Link</b>
+                        <span>Tap <code>[QR/LINK]</code> at the top right to share your link. Anyone who opens it enters your room immediately.</span>
+                      </div>
+                    </div>
+                    <div class="help-step-item">
+                      <span class="help-step-num">3</span>
+                      <div class="help-step-content">
+                        <b>Or Follow a Friend</b>
+                        <span>Don't know where your friend is? Paste their Peer Code into <code>[FOLLOW]</code> to jump straight into their room.</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="help-guide-footer">
+                    * No database, no accounts. Once in the same room, you talk device-to-device with zero logs. Close the tab to wipe everything.
+                  </div>
                 </div>
               </div>
 

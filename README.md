@@ -2,62 +2,20 @@
 
 Minimal, ephemeral P2P chat built with TypeScript, Vite, WebRTC and PeerJS.
 
-## How revchat works
+## The revchat Manifesto
 
-- **Connect:** Join a room via Room Code or QR link.
-- **Follow:** Jump into a friend's room via Peer Code.
-- **Stateless:** No disk, no logs. Close the tab to wipe everything.
+In an era where wealth has become the ultimate end, we grieve what was lost.
 
-## Commands
+Wealth is an invisible debt—comfort bought by pushing countless others to the brink. As the endless greed of a few chokes the freedom of the many, we refuse to worship capital any longer. For true happiness and love for one another, we declare:
 
-### 1. Core Settings
-| Command | Description |
-| :--- | :--- |
-| `/nick <name>` | Change your display nickname |
-| `/room [code]` | Switch room (or random room if omitted) |
-| `/follow <code>` | Follow a peer into their active room |
+- **Decentralization**  
+  No central servers, no exploitation. Every node meets directly as an equal.
 
-### 2. Chat Expression
-| Command | Description |
-| :--- | :--- |
-| `/bold <text>` | Send bold message (`**text**`) |
-| `/italic <text>` | Send italic message (`*text*`) |
+- **Sovereignty**  
+  No surveillance, no permission asked. Our thoughts, words, and identities belong solely to us.
 
-### 3. Mini-Games (Strict Syntax)
-| Command | Description |
-| :--- | :--- |
-| `/coin` | Flip a coin (`HEADS` / `TAILS`) |
-| `/roll [max]` | Roll a dice (default `1-6`) |
-| `/pick <a, b, ...>` | Randomly pick one from options |
-| `/rps [r\|p\|s]` | Throw Rock, Paper, or Scissors (random if omitted) |
-| `/8ball <question>` | Ask the Magic 8-Ball |
+- **De-commodification**  
+  Human bonds are not for sale. We reject data capitalism to protect the purity of genuine affection.
 
-### 4. ASCII Emotes (In-place)
-| Emote Command | Output |
-| :--- | :--- |
-| `/rev` | `(ง ͡° ͜ʖ ͡°)ง🏴` (Signature) |
-| `/revrev` | `🚩( ͡° ͜ʖ ͡°)🚩` (Signature) |
-| `/shrug` | `¯\_(ツ)_/¯` |
-| `/flip` | `(╯°□°）╯︵ ┻━┻` |
-| `/unflip` | `┬─┬ ノ( ゜-゜ノ)` |
-| `/lenny` | `( ͡° ͜ʖ ͡°)` |
-| `/look` | `ಠ_ಠ` |
-| `/gib` | `༼ つ ◕_◕ ༽つ` |
-| `/fight` | `(ง'̀-'́)ง` |
-| `/cry` | `(ಥ﹏ಥ)` |
-| `/love` | `(｡♥‿♥｡)` |
-| `/dance` | `♪┏(・o･)┛♪` |
-
-### 5. Utility & Appearance
-| Command | Description |
-| :--- | :--- |
-| `/clear` | Clear local chat view |
-| `/size [s\|m\|l]` | Change main panel font size |
-| `/theme [dark\|light]` | Switch theme (aliases: `/dark`, `/light`) |
-| `/help` | Open commands & help guide |
-
-### 6. Mentions
-| Trigger | Description |
-| :--- | :--- |
-| `@<nickname>` | Mention a peer in the room |
-| `@me` | Automatically expands to your current nickname |
+Beyond wealth, toward love.  
+This is the spirit of revchat.
