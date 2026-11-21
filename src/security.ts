@@ -1,15 +1,18 @@
-import { ChatMessage, P2PPacket, PacketType } from './types';
+import { ChatMessage, MediaAttachment, MediaKind, P2PPacket, PacketType } from './types';
 
 export const MAX_MESSAGE_TEXT_LENGTH = 4_000;
 export const MAX_NICKNAME_LENGTH = 24;
 export const MAX_ID_LENGTH = 64;
 export const MAX_PEERS_IN_ROOM = 32;
+export const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 export const RATE_LIMIT_WINDOW_MS = 5_000;
-export const RATE_LIMIT_MAX_PACKETS = 30;
+export const RATE_LIMIT_MAX_PACKETS = 60;
+
+export const ALLOWED_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
+const REACTION_SET = new Set<string>(ALLOWED_REACTIONS);
 
 const ALLOWED_PACKET_TYPES = new Set<PacketType>([
   'HELLO',
-  'PEER_LIST',
   'CHAT_MSG',
   'CHAT_ACK',
   'TYPING',
@@ -17,9 +20,18 @@ const ALLOWED_PACKET_TYPES = new Set<PacketType>([
   'PONG',
   'NICK_CHANGE',
   'LEAVE',
+  'REACTION',
+  'DELETE_MSG',
+  'MEDIA_CANCEL',
+  'CALL_STATE',
 ]);
 
+const ALLOWED_MEDIA_KINDS = new Set<MediaKind>(['image', 'video', 'audio', 'file']);
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function isAllowedReaction(emoji: string): boolean {
+  return REACTION_SET.has(emoji);
+}
 
 export function sanitizeObject(input: unknown, depth = 0): any {
   if (depth > 5 || input === null || input === undefined) return undefined;
@@ -51,6 +63,50 @@ export function sanitizeId(val: unknown): string {
   return val.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, MAX_ID_LENGTH);
 }
 
+export function sanitizeFilename(raw: unknown): string {
+  if (typeof raw !== 'string') return 'file';
+  const base = raw
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .replace(/[/\\]+/g, '_')
+    .replace(/\.\.+/g, '.')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 120);
+  return base || 'file';
+}
+
+export function validateMediaMeta(raw: unknown): MediaAttachment | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const m = raw as Record<string, unknown>;
+  const transferId = sanitizeId(m.transferId);
+  const kind = m.kind as MediaKind;
+  const name = sanitizeFilename(m.name);
+  const mimeType =
+    sanitizeString(m.mimeType, 80, 'application/octet-stream')
+      .replace(/[^a-zA-Z0-9/+.;=\- ]/g, '')
+      .trim() || 'application/octet-stream';
+  const size = Number(m.size);
+  const durationSecRaw = m.durationSec !== undefined ? Number(m.durationSec) : undefined;
+  const durationSec =
+    durationSecRaw !== undefined && Number.isFinite(durationSecRaw) && durationSecRaw >= 0
+      ? Math.min(600, Math.round(durationSecRaw))
+      : undefined;
+
+  if (!transferId || !ALLOWED_MEDIA_KINDS.has(kind)) return null;
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) return null;
+
+  return {
+    transferId,
+    kind,
+    name,
+    mimeType,
+    size: Math.floor(size),
+    durationSec,
+    progress: 0,
+    status: 'receiving',
+  };
+}
+
 export function validateIncomingPacket(raw: unknown): P2PPacket | null {
   if (!raw || typeof raw !== 'object') return null;
   const clean = sanitizeObject(raw);
@@ -71,6 +127,9 @@ export function validateIncomingPacket(raw: unknown): P2PPacket | null {
     return null;
   }
 
+  const sig = typeof clean.sig === 'string' ? clean.sig.slice(0, 256) : undefined;
+  const enc = typeof clean.enc === 'boolean' ? clean.enc : undefined;
+
   return {
     packetId,
     type,
@@ -80,6 +139,8 @@ export function validateIncomingPacket(raw: unknown): P2PPacket | null {
     timestamp,
     ttl,
     payload: clean.payload ?? {},
+    ...(sig ? { sig } : {}),
+    ...(enc !== undefined ? { enc } : {}),
   };
 }
 
@@ -92,8 +153,9 @@ export function validateChatMessage(raw: unknown, fallbackRoomId: string): ChatM
   const text = sanitizeString(m.text, MAX_MESSAGE_TEXT_LENGTH).trim();
   const timestamp = Number(m.timestamp);
   const roomId = sanitizeId(m.roomId).toUpperCase() || fallbackRoomId;
+  const attachment = m.attachment ? validateMediaMeta(m.attachment) || undefined : undefined;
 
-  if (!id || !senderId || !text || !Number.isFinite(timestamp)) {
+  if (!id || !senderId || !Number.isFinite(timestamp) || (!text && !attachment)) {
     return null;
   }
 
@@ -123,6 +185,7 @@ export function validateChatMessage(raw: unknown, fallbackRoomId: string): ChatM
     replyTo,
     targetPeerId: targetPeerId || undefined,
     targetPeerName: targetPeerName || undefined,
+    attachment,
     ackedBy: [],
   };
 }

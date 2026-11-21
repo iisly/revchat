@@ -11,15 +11,17 @@
     "dev:lan": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "audit:sec": "npm audit --audit-level=low"
   },
   "dependencies": {
-    "peerjs": "^1.5.5",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "trystero": "^0.27.0"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
     "typescript": "^5.9.3",
-    "vite": "^6.4.5"
+    "vite": "^6.4.5",
+    "vitest": "^5.1.1"
   }
 }

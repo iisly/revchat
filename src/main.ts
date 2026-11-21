@@ -1,103 +1,86 @@
+import {
+  DEFAULT_FONT_SIZE,
+  FONT_SIZE_STEP,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
+  SlashCommandDef,
+  clampFontSize,
+  expandInlineTokens,
+  getMatchingMentions,
+  getMatchingSlashCommands,
+  parseFontSizeInput,
+  runCoinFlip,
+  runDiceRoll,
+  runEightBall,
+  runPick,
+  runRps,
+} from './commands';
+import { escapeAttr, escapeHtml } from './markdown';
+import {
+  BlobUrlRegistry,
+  MAX_MEDIA_BYTES,
+  classifyMime,
+  compressImageIfNeeded,
+} from './media';
+import { NotificationManager } from './notifications';
 import { P2PEngine } from './p2p-engine';
 import { generateQrSvg } from './qrcode';
-import { MAX_NICKNAME_LENGTH, sanitizeString } from './security';
 import {
+  MAX_NICKNAME_LENGTH,
+  isAllowedReaction,
+  sanitizeFilename,
+  sanitizeString,
+} from './security';
+import {
+  buildRoomUrl,
   createSessionProfile,
   generateRoomCode,
   generateUUID,
   normalizeRoomId,
+  parseRoomFromUrl,
+  saveSessionProfile,
 } from './storage';
-import { ChatMessage, PeerInfo, SignalingState, UserProfile } from './types';
+import {
+  ChatMessage,
+  PeerInfo,
+  RemoteCallStream,
+  SignalingState,
+  UserProfile,
+} from './types';
+import { CallDockController } from './ui/call-bar';
+import { ComposerController } from './ui/composer';
+import {
+  iconClose,
+  iconHelp,
+  iconMenu,
+  iconMoon,
+  iconSearch,
+  iconShare,
+  iconSun,
+  iconVolumeOff,
+  iconVolumeOn,
+} from './ui/icons';
+import {
+  MessageRenderContext,
+  renderMessagesListHtml,
+  renderReactionPickerHtml,
+  renderSingleMessageHtml,
+  shouldGroupMessages,
+} from './ui/messages';
+import { ActiveModalType, renderModalDOM } from './ui/modals';
 
 const MAX_MEMORY_MESSAGES = 1000;
-
-const EIGHT_BALL_ANSWERS = [
-  'It is certain.',
-  'Without a doubt.',
-  'Yes — definitely.',
-  'Most likely.',
-  'Outlook good.',
-  'Ask again later.',
-  'Better not tell you now.',
-  'Cannot predict now.',
-  'Don’t count on it.',
-  'My reply is no.',
-  'Very doubtful.',
-];
-
-interface SlashCommandDef {
-  cmd: string;
-  usage: string;
-  desc: string;
-  needsArgs: boolean;
-}
-
-const ASCII_EMOTES: Record<string, string> = {
-  '/rev': '(ง ͡° ͜ʖ ͡°)ง🏴',
-  '/revrev': '🚩( ͡° ͜ʖ ͡°)🚩',
-  '/shrug': '¯\\_(ツ)_/¯',
-  '/flip': '(╯°□°）╯︵ ┻━┻',
-  '/unflip': '┬─┬ ノ( ゜-゜ノ)',
-  '/lenny': '( ͡° ͜ʖ ͡°)',
-  '/look': 'ಠ_ಠ',
-  '/gib': '༼ つ ◕_◕ ༽つ',
-  '/fight': "(ง'̀-'́)ง",
-  '/cry': '(ಥ﹏ಥ)',
-  '/love': '(｡♥‿♥｡)',
-  '/dance': '♪┏(・o･)┛♪',
-};
-
-const FONT_SIZES: Record<'s' | 'm' | 'l', { label: string; px: string }> = {
-  s: { label: 'S', px: '14px' },
-  m: { label: 'M', px: '17px' },
-  l: { label: 'L', px: '20px' },
-};
-
-const SLASH_COMMANDS: SlashCommandDef[] = [
-  // 1. Core Settings
-  { cmd: '/nick', usage: '/nick <name>', desc: 'Change your display nickname', needsArgs: true },
-  { cmd: '/room', usage: '/room [code]', desc: 'Switch room (or random room if omitted)', needsArgs: false },
-  { cmd: '/follow', usage: '/follow <code>', desc: 'Follow a peer into their active room', needsArgs: true },
-
-  // 2. Chat Expression
-  { cmd: '/bold', usage: '/bold <text>', desc: 'Send bold message (**text**)', needsArgs: true },
-  { cmd: '/italic', usage: '/italic <text>', desc: 'Send italic message (*text*)', needsArgs: true },
-
-  // 3. Mini-Games (Strict Syntax)
-  { cmd: '/coin', usage: '/coin', desc: 'Flip a coin (HEADS / TAILS)', needsArgs: false },
-  { cmd: '/roll', usage: '/roll [max]', desc: 'Roll a dice (default 1-6)', needsArgs: false },
-  { cmd: '/pick', usage: '/pick <a, b, ...>', desc: 'Randomly pick one from options', needsArgs: true },
-  { cmd: '/rps', usage: '/rps [r|p|s]', desc: 'Throw Rock, Paper, or Scissors (random if omitted)', needsArgs: false },
-  { cmd: '/8ball', usage: '/8ball <question>', desc: 'Ask the Magic 8-Ball', needsArgs: true },
-
-  // 4. ASCII Emotes (In-place)
-  { cmd: '/rev', usage: '/rev', desc: '(ง ͡° ͜ʖ ͡°)ง🏴 (Signature)', needsArgs: false },
-  { cmd: '/revrev', usage: '/revrev', desc: '🚩( ͡° ͜ʖ ͡°)🚩 (Signature)', needsArgs: false },
-  { cmd: '/shrug', usage: '/shrug', desc: '¯\\_(ツ)_/¯', needsArgs: false },
-  { cmd: '/flip', usage: '/flip', desc: '(╯°□°）╯︵ ┻━┻', needsArgs: false },
-  { cmd: '/unflip', usage: '/unflip', desc: '┬─┬ ノ( ゜-゜ノ)', needsArgs: false },
-  { cmd: '/lenny', usage: '/lenny', desc: '( ͡° ͜ʖ ͡°)', needsArgs: false },
-  { cmd: '/look', usage: '/look', desc: 'ಠ_ಠ', needsArgs: false },
-  { cmd: '/gib', usage: '/gib', desc: '༼ つ ◕_◕ ༽つ', needsArgs: false },
-  { cmd: '/fight', usage: '/fight', desc: "(ง'̀-'́)ง", needsArgs: false },
-  { cmd: '/cry', usage: '/cry', desc: '(ಥ﹏ಥ)', needsArgs: false },
-  { cmd: '/love', usage: '/love', desc: '(｡♥‿♥｡)', needsArgs: false },
-  { cmd: '/dance', usage: '/dance', desc: '♪┏(・o･)┛♪', needsArgs: false },
-
-  // 5. Utility & Appearance
-  { cmd: '/clear', usage: '/clear', desc: 'Clear local chat view', needsArgs: false },
-  { cmd: '/size', usage: '/size [s|m|l]', desc: 'Change main panel font size', needsArgs: false },
-  { cmd: '/theme', usage: '/theme [dark|light]', desc: 'Switch theme (aliases: /dark, /light)', needsArgs: false },
-  { cmd: '/dark', usage: '/dark', desc: 'Switch to dark theme', needsArgs: false },
-  { cmd: '/light', usage: '/light', desc: 'Switch to light theme', needsArgs: false },
-  { cmd: '/help', usage: '/help', desc: 'Open commands & help guide', needsArgs: false },
-];
 
 class RevChatApp {
   private root: HTMLElement;
   private profile: UserProfile;
   private roomId: string;
+  private roomKey: string | null;
   private engine!: P2PEngine;
+  private notifications: NotificationManager;
+  private blobs = new BlobUrlRegistry();
+  private composer!: ComposerController;
+  private callDock = new CallDockController();
 
   private signalingState: SignalingState;
   private peers: PeerInfo[] = [];
@@ -105,10 +88,19 @@ class RevChatApp {
   private messageMap = new Map<string, ChatMessage>();
   private typingPeers: { peerId: string; nickname: string }[] = [];
 
+  // Call state
+  private localCallStream: MediaStream | null = null;
+  private localVideoEnabled = false;
+  private localCallMuted = false;
+  private isScreenShare = false;
+  private remoteCallStreams: RemoteCallStream[] = [];
+
   // UI state
   private mobileDrawerOpen = false;
-  private activeModal: 'none' | 'invite' | 'help' = 'none';
+  private activeModal: ActiveModalType = 'none';
   private inviteQrSvg = '';
+  private lightboxUrl?: string;
+  private lightboxName?: string;
   private searchOpen = false;
   private searchQuery = '';
   private replyTo: ChatMessage['replyTo'] | undefined = undefined;
@@ -119,7 +111,7 @@ class RevChatApp {
   private slashMenuDismissed = false;
   private mentionMenuIndex = 0;
   private mentionMenuDismissed = false;
-  private fontSizeKey: 's' | 'm' | 'l' = 's';
+  private fontSizePx: number;
 
   // Timers
   private lastTypingSentAt = 0;
@@ -129,27 +121,45 @@ class RevChatApp {
   constructor(root: HTMLElement) {
     this.root = root;
     this.profile = createSessionProfile();
-    this.applyTheme();
+    this.fontSizePx = clampFontSize(this.profile.fontSize || DEFAULT_FONT_SIZE);
+    this.applyTheme(false);
+    this.setFontSize(this.fontSizePx, false);
 
-    const initialRoom = this.parseRoomFromUrl() || 'LOBBY';
-    this.roomId = normalizeRoomId(initialRoom);
-    this.syncUrlWithRoom(this.roomId);
+    const parsed = parseRoomFromUrl(window.location.href);
+    this.roomId = parsed.roomId;
+    this.roomKey = parsed.roomKey;
+    this.syncUrlWithRoom(this.roomId, this.roomKey);
+
+    this.notifications = new NotificationManager(this.roomId, this.profile.soundMuted);
+    this.composer = new ComposerController(this.root, this.roomId, {
+      onSendText: (text) => this.handleSendMessage(text),
+      onTypingInput: (val) => this.handleComposerTypingInput(val),
+      onPickFiles: (files) => void this.handleSelectedFiles(files),
+      onStartCall: (video) => void this.startCallFlow(video),
+      onSendVoice: (blob, mime, dur) => void this.handleSendVoiceNote(blob, mime, dur),
+      onRunQuickCommand: (cmdLine) => this.handleSendMessage(cmdLine),
+      onToast: (msg) => this.showToast(msg),
+      isInCall: () => Boolean(this.localCallStream),
+    });
 
     this.signalingState = {
       status: 'initializing',
       myPeerId: `revchat-p-${this.profile.clientId}`,
       roomId: this.roomId,
-      isBeaconHost: false,
     };
 
     this.setupVisualViewportFix();
     this.setupLifecycleCleanup();
+    this.setupGlobalKeyHandlers();
     this.render();
     this.initEngine();
   }
 
   private setupLifecycleCleanup(): void {
     const cleanup = () => {
+      this.callDock.destroy();
+      this.notifications.destroy();
+      this.blobs.revokeAll();
       if (this.engine) {
         this.engine.destroy();
       }
@@ -161,39 +171,62 @@ class RevChatApp {
         window.location.reload();
       }
     });
+    window.addEventListener('hashchange', () => {
+      const parsed = parseRoomFromUrl(window.location.href);
+      if (parsed.roomId !== this.roomId || parsed.roomKey !== this.roomKey) {
+        void this.switchRoom(parsed.roomId, parsed.roomKey);
+      }
+    });
   }
 
-  private parseRoomFromUrl(): string | null {
-    const params = new URLSearchParams(window.location.search);
-    const fromQuery = params.get('room');
-    if (fromQuery) return normalizeRoomId(fromQuery);
-
-    if (window.location.hash.startsWith('#room=')) {
-      return normalizeRoomId(decodeURIComponent(window.location.hash.slice(6)));
-    }
-    return null;
+  private setupGlobalKeyHandlers(): void {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (this.activeModal !== 'none') {
+          this.activeModal = 'none';
+          this.renderModal();
+          return;
+        }
+        if (this.callDock.exitTheaterIfActive()) {
+          return;
+        }
+        if (this.mobileDrawerOpen) {
+          this.setMobileDrawerOpen(false);
+          return;
+        }
+        if (this.composer.hasOpenPopover()) {
+          this.composer.closePopovers();
+          return;
+        }
+        const openPickers = this.root.querySelectorAll('.reaction-picker-slot:not(:empty)');
+        if (openPickers.length > 0) {
+          openPickers.forEach((slot) => {
+            slot.innerHTML = '';
+          });
+          return;
+        }
+        if (this.searchOpen) {
+          this.searchOpen = false;
+          this.searchQuery = '';
+          this.root.querySelector('#btn-toggle-search')?.classList.remove('active');
+          this.updateSearchBarDOM();
+          this.appendOrRefreshMessages();
+        }
+      }
+    });
   }
 
-  private syncUrlWithRoom(roomId: string): void {
+  private syncUrlWithRoom(roomId: string, roomKey: string | null): void {
     try {
-      const url = new URL(window.location.href);
-      url.searchParams.set('room', roomId);
-      url.searchParams.delete('peer');
-      window.history.replaceState({}, '', url.toString());
+      const next = buildRoomUrl(window.location.href, roomId, roomKey);
+      window.history.replaceState({}, '', next);
     } catch {
       // ignore
     }
   }
 
   private getInviteUrl(): string {
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set('room', this.roomId);
-      url.searchParams.delete('peer');
-      return url.toString();
-    } catch {
-      return window.location.href;
-    }
+    return buildRoomUrl(window.location.href, this.roomId, this.roomKey);
   }
 
   private setupVisualViewportFix(): void {
@@ -213,16 +246,88 @@ class RevChatApp {
     updateHeight();
   }
 
-  private applyTheme(): void {
+  private applyTheme(save = true): void {
     if (this.profile.theme === 'auto') {
       this.profile.theme = window.matchMedia('(prefers-color-scheme: dark)').matches
         ? 'dark'
         : 'light';
     }
     document.documentElement.setAttribute('data-theme', this.profile.theme);
+    if (save) saveSessionProfile(this.profile);
   }
 
-  private pushMessageToMemory(msg: ChatMessage): boolean {
+  private syncThemeButtonDOM(): void {
+    const themeBtn = this.root.querySelector('#btn-theme');
+    if (!themeBtn) return;
+    const isDark = this.profile.theme === 'dark';
+    themeBtn.innerHTML = isDark ? iconSun(15) : iconMoon(15);
+    themeBtn.setAttribute(
+      'title',
+      isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'
+    );
+  }
+
+  private setTheme(target?: 'dark' | 'light', showBanner = false): void {
+    const current =
+      document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const next = target || (current === 'dark' ? 'light' : 'dark');
+    this.profile.theme = next;
+    this.applyTheme(true);
+    this.engine?.updateProfile(this.profile);
+    this.syncThemeButtonDOM();
+    if (showBanner) {
+      this.showToast(`Theme switched to ${next.toUpperCase()}`);
+    }
+  }
+
+  private setFontSize(px: number, showBanner = true): void {
+    const clamped = clampFontSize(px);
+    this.fontSizePx = clamped;
+    this.profile.fontSize = clamped;
+    saveSessionProfile(this.profile);
+
+    document.documentElement.style.setProperty('--msg-font-size', `${clamped}px`);
+    const readout = this.root.querySelector('#btn-size-reset');
+    if (readout) readout.textContent = `${clamped}px`;
+    const decBtn = this.root.querySelector('#btn-size-dec') as HTMLButtonElement | null;
+    if (decBtn) decBtn.disabled = clamped <= MIN_FONT_SIZE;
+    const incBtn = this.root.querySelector('#btn-size-inc') as HTMLButtonElement | null;
+    if (incBtn) incBtn.disabled = clamped >= MAX_FONT_SIZE;
+
+    if (showBanner) {
+      this.showToast(`Text size: ${clamped}px`);
+    }
+  }
+
+  private setNickname(raw: string): boolean {
+    const val = sanitizeString(raw, MAX_NICKNAME_LENGTH).trim();
+    if (!val) return false;
+    if (val === this.profile.nickname) {
+      const nickInput = this.root.querySelector('#input-nick') as HTMLInputElement | null;
+      if (nickInput) nickInput.value = val;
+      return true;
+    }
+    this.profile.nickname = val;
+    saveSessionProfile(this.profile);
+    this.engine?.updateProfile(this.profile);
+    const nickInput = this.root.querySelector('#input-nick') as HTMLInputElement | null;
+    if (nickInput) nickInput.value = val;
+    this.updateCallDockDOM();
+    this.showToast(`Nickname: ${val}`);
+    return true;
+  }
+
+  private getMessageRenderContext(): MessageRenderContext {
+    return {
+      myPeerId: this.engine ? this.engine.getMyPeerId() : `revchat-p-${this.profile.clientId}`,
+      myNickname: this.profile.nickname,
+      myClientId: this.profile.clientId,
+      roomId: this.roomId,
+      searchQuery: this.searchQuery,
+    };
+  }
+
+  private pushMessageToMemory(msg: ChatMessage, notifyIfExternal = false): boolean {
     if (this.messageMap.has(msg.id)) return false;
     this.messageMap.set(msg.id, msg);
     let evicted = false;
@@ -230,36 +335,137 @@ class RevChatApp {
     if (this.messages.length > MAX_MEMORY_MESSAGES) {
       const removed = this.messages.shift();
       if (removed) {
+        if (removed.attachment?.url) {
+          this.blobs.revoke(removed.attachment.url);
+        }
         this.messageMap.delete(removed.id);
         evicted = true;
       }
     }
     this.appendSingleMessageDOM(msg, evicted);
+
+    if (notifyIfExternal && !msg.system) {
+      this.notifications.onIncomingMessage();
+    }
     return true;
   }
 
   private initEngine(): void {
-    this.engine = new P2PEngine(this.profile, this.roomId, {
+    this.engine = new P2PEngine(this.profile, this.roomId, this.roomKey, {
       onSignalingChange: (state) => {
         this.signalingState = state;
         this.updateStatusDOM();
       },
       onPeersChange: (peers) => {
         this.peers = peers;
+        if (this.whisperTarget) {
+          const activePeer = peers.find((p) => p.peerId === this.whisperTarget!.peerId);
+          if (!activePeer) {
+            const prevName = this.whisperTarget.nickname;
+            this.whisperTarget = undefined;
+            this.updateContextBannerDOM();
+            this.showToast(`DM closed: ${prevName} left the room.`);
+          } else if (activePeer.nickname !== this.whisperTarget.nickname) {
+            this.whisperTarget.nickname = activePeer.nickname;
+            this.updateContextBannerDOM();
+          }
+        }
         this.updatePeersDOM();
+        this.updateCallDockDOM();
       },
       onChatMessage: (msg) => {
-        this.pushMessageToMemory(msg);
+        this.pushMessageToMemory(msg, true);
       },
       onMessageAck: (messageId, ackPeerId) => {
         const target = this.messageMap.get(messageId);
         if (target && !target.ackedBy.includes(ackPeerId)) {
           target.ackedBy.push(ackPeerId);
+          target.deliveryState = 'delivered';
+          const completedSending = target.attachment?.status === 'sending';
+          if (completedSending && target.attachment) {
+            target.attachment.status = 'ready';
+            target.attachment.progress = 100;
+          }
           const ackEl = this.root.querySelector(`[data-ack-id="${messageId}"]`);
-          if (ackEl) {
+          if (ackEl && !completedSending) {
             ackEl.textContent = `✓✓ ${target.ackedBy.length}`;
+          } else {
+            this.rerenderSingleMessageRow(messageId);
           }
         }
+      },
+      onMessageFailed: (messageId) => {
+        const target = this.messageMap.get(messageId);
+        if (target && target.ackedBy.length === 0) {
+          target.deliveryState = 'failed';
+          this.rerenderSingleMessageRow(messageId);
+        }
+      },
+      onMessageReaction: (messageId, emoji, actorId) => {
+        this.applyReactionLocally(messageId, emoji, actorId);
+      },
+      onMessageDeleted: (messageId, senderId) => {
+        const idx = this.messages.findIndex((m) => m.id === messageId);
+        const target = idx >= 0 ? this.messages[idx] : this.messageMap.get(messageId);
+        if (!target || target.senderId !== senderId) return;
+        target.deleted = true;
+        target.text = '';
+        if (target.attachment?.url) {
+          this.blobs.revoke(target.attachment.url);
+        }
+        target.attachment = undefined;
+        this.rerenderSingleMessageRow(messageId);
+        if (idx >= 0 && this.messages[idx + 1]) {
+          this.rerenderSingleMessageRow(this.messages[idx + 1].id);
+        }
+      },
+      onMediaProgress: (transferId, pct, phase) => {
+        const msg = this.messageMap.get(transferId);
+        if (!msg?.attachment) return;
+        if (phase === 'sending' && msg.attachment.status === 'ready') return;
+        msg.attachment.progress = pct;
+        if (pct >= 100 && msg.attachment.status === 'sending') {
+          msg.attachment.status = 'ready';
+          msg.deliveryState = msg.ackedBy.length > 0 ? 'delivered' : 'sent';
+          this.rerenderSingleMessageRow(transferId);
+          return;
+        }
+        const row = this.root.querySelector(`[data-transfer-id="${transferId}"]`);
+        if (row) {
+          const fill = row.querySelector('.msg-prog-fill') as HTMLElement | null;
+          const pctEl = row.querySelector('.prog-pct');
+          if (fill) fill.style.width = `${pct}%`;
+          if (pctEl) pctEl.textContent = `${pct}%`;
+        }
+      },
+      onMediaReceived: (transferId, blob, mimeType, verified) => {
+        const msg = this.messageMap.get(transferId);
+        if (!msg?.attachment) return;
+        msg.attachment.url = this.blobs.create(blob);
+        msg.attachment.mimeType = mimeType;
+        msg.attachment.status = 'ready';
+        msg.attachment.progress = 100;
+        msg.verified = verified;
+        this.rerenderSingleMessageRow(transferId);
+      },
+      onMediaCanceled: (transferId) => {
+        const msg = this.messageMap.get(transferId);
+        if (!msg?.attachment) return;
+        msg.attachment.status = 'canceled';
+        this.rerenderSingleMessageRow(transferId);
+      },
+      onMediaFailed: (transferId) => {
+        const msg = this.messageMap.get(transferId);
+        if (!msg?.attachment) return;
+        if (msg.ackedBy.length > 0) {
+          msg.attachment.status = 'ready';
+          msg.attachment.progress = 100;
+          msg.deliveryState = 'delivered';
+        } else if (msg.attachment.status === 'sending') {
+          msg.attachment.status = 'error';
+          msg.deliveryState = 'failed';
+        }
+        this.rerenderSingleMessageRow(transferId);
       },
       onTypingChange: (typingPeers) => {
         this.typingPeers = typingPeers;
@@ -276,22 +482,22 @@ class RevChatApp {
           system: true,
           ackedBy: [],
         };
-        this.pushMessageToMemory(sysMsg);
+        this.pushMessageToMemory(sysMsg, false);
       },
-      onRoomFollowed: (newRoomId, peerNickname) => {
-        this.roomId = newRoomId;
-        this.syncUrlWithRoom(this.roomId);
-        this.replyTo = undefined;
-        this.whisperTarget = undefined;
-        this.mobileDrawerOpen = false;
-        this.messages = [];
-        this.messageMap.clear();
-        this.render();
-        this.showToast(`Joined ${peerNickname} in #${newRoomId}`);
+      onCallStreamsChange: (streams) => {
+        this.remoteCallStreams = streams;
+        this.updateCallDockDOM();
+      },
+      onLocalStreamUpdated: (stream, videoEnabled, muted, isScreenShare) => {
+        this.localCallStream = stream;
+        this.localVideoEnabled = videoEnabled;
+        this.localCallMuted = muted;
+        this.isScreenShare = isScreenShare;
+        this.updateCallDockDOM();
       },
     });
 
-    this.engine.start();
+    void this.engine.start();
   }
 
   private setMobileDrawerOpen(open: boolean): void {
@@ -318,51 +524,55 @@ class RevChatApp {
     }, 2400);
   }
 
-  private switchRoom(targetRoom: string): void {
+  private async switchRoom(targetRoom: string, targetKey: string | null = null): Promise<void> {
     const normalized = normalizeRoomId(targetRoom);
-    if (normalized === this.roomId) {
+    if (normalized === this.roomId && targetKey === this.roomKey) {
       this.setMobileDrawerOpen(false);
       return;
     }
+    this.callDock.reset();
+    this.blobs.revokeAll();
     this.roomId = normalized;
-    this.syncUrlWithRoom(this.roomId);
+    this.roomKey = targetKey;
+    this.syncUrlWithRoom(this.roomId, this.roomKey);
+    this.composer.setRoomId(this.roomId);
+    this.notifications.updateContext(this.roomId, this.profile.soundMuted);
     this.replyTo = undefined;
     this.whisperTarget = undefined;
     this.mobileDrawerOpen = false;
     this.messages = [];
     this.messageMap.clear();
-    this.engine.switchRoom(this.roomId);
+    this.localCallStream = null;
+    this.remoteCallStreams = [];
+    await this.engine.switchRoom(this.roomId, this.roomKey);
     this.render();
     this.scrollToBottom();
   }
 
-  private applyFontSize(key?: 's' | 'm' | 'l'): void {
-    const order: ('s' | 'm' | 'l')[] = ['s', 'm', 'l'];
-    if (key && FONT_SIZES[key]) {
-      this.fontSizeKey = key;
-    } else {
-      const nextIdx = (order.indexOf(this.fontSizeKey) + 1) % order.length;
-      this.fontSizeKey = order[nextIdx];
-    }
-    const spec = FONT_SIZES[this.fontSizeKey];
-    document.documentElement.style.setProperty('--msg-font-size', spec.px);
-    this.root.querySelectorAll('[data-size-key]').forEach((el) => {
-      const k = el.getAttribute('data-size-key');
-      el.classList.toggle('primary', k === this.fontSizeKey);
-    });
-    this.showToast(`Font size: ${spec.label} (${spec.px})`);
+  private async switchToRandomRoom(): Promise<void> {
+    const code = generateRoomCode();
+    await this.switchRoom(code, null);
   }
 
-  private expandInlineTokens(text: string): string {
-    let res = text.replace(/(^|\s)@me(?=\s|$)/gi, (full, lead) => `${lead}@${this.profile.nickname}`);
-    res = res.replace(/(^|\s)(\/[a-z0-9]+)(?=\s|$)/gi, (full, lead, token) => {
-      const emote = ASCII_EMOTES[token.toLowerCase()];
-      return emote ? `${lead}${emote}` : full;
-    });
-    return res;
+  private toggleSoundMute(): void {
+    this.profile.soundMuted = !this.profile.soundMuted;
+    saveSessionProfile(this.profile);
+    this.notifications.updateContext(this.roomId, this.profile.soundMuted);
+    const btn = this.root.querySelector('#btn-mute-sound');
+    if (btn) {
+      btn.innerHTML = this.profile.soundMuted ? iconVolumeOff(15) : iconVolumeOn(15);
+      btn.classList.toggle('muted', this.profile.soundMuted);
+      const label = this.profile.soundMuted
+        ? 'Sound Muted (click to unmute)'
+        : 'Sound On (click to mute)';
+      btn.setAttribute('title', label);
+      btn.setAttribute('aria-label', label);
+    }
+    this.showToast(this.profile.soundMuted ? 'Sound muted' : 'Sound enabled');
   }
 
   private handleSendMessage(rawInput: string): void {
+    this.notifications.unlockAudio();
     const text = rawInput.trim();
     if (!text) return;
 
@@ -370,11 +580,11 @@ class RevChatApp {
       return;
     }
 
-    this.dispatchUserChat(this.expandInlineTokens(text));
+    this.dispatchUserChat(expandInlineTokens(text, this.profile.nickname));
   }
 
   private executeSlashCommand(text: string): boolean {
-    const parts = text.split(' ');
+    const parts = text.split(/\s+/);
     const cmd = parts[0].toLowerCase();
     const argStr = parts.slice(1).join(' ').trim();
     const nick = this.profile.nickname;
@@ -386,6 +596,7 @@ class RevChatApp {
         return true;
       }
       case '/clear': {
+        this.blobs.revokeAll();
         this.messages = [];
         this.messageMap.clear();
         this.appendOrRefreshMessages();
@@ -393,161 +604,197 @@ class RevChatApp {
         return true;
       }
       case '/nick': {
-        const cleanNick = sanitizeString(argStr, MAX_NICKNAME_LENGTH).trim();
-        if (!cleanNick) {
+        if (!this.setNickname(argStr)) {
           this.showToast('Usage: /nick <name>');
-          return true;
         }
-        this.profile.nickname = cleanNick;
-        this.engine.updateProfile(this.profile);
-        const nickInput = this.root.querySelector('#input-nick') as HTMLInputElement | null;
-        if (nickInput) nickInput.value = this.profile.nickname;
-        this.showToast(`Nickname set to ${this.profile.nickname}`);
         return true;
       }
       case '/room': {
-        this.switchRoom(argStr || generateRoomCode());
-        return true;
-      }
-      case '/follow': {
-        if (!argStr) {
-          this.showToast('Usage: /follow <peer-code>');
-          return true;
-        }
-        const ok = this.engine.connectToDirectPeer(argStr, true);
-        if (ok) {
-          this.showToast(`Following ${argStr} into their room...`);
+        if (argStr) {
+          void this.switchRoom(argStr, null);
         } else {
-          this.showToast('Could not follow peer (check code)');
+          void this.switchToRandomRoom();
         }
         return true;
       }
-      case '/bold': {
-        if (!argStr) {
-          this.showToast('Usage: /bold <text>');
-          return true;
-        }
-        this.dispatchUserChat(`**${this.expandInlineTokens(argStr)}**`);
-        return true;
-      }
-      case '/italic': {
-        if (!argStr) {
-          this.showToast('Usage: /italic <text>');
-          return true;
-        }
-        this.dispatchUserChat(`*${this.expandInlineTokens(argStr)}*`);
+      case '/mute': {
+        this.toggleSoundMute();
         return true;
       }
       case '/size': {
-        const arg = argStr.toLowerCase() as 's' | 'm' | 'l';
-        if (arg === 's' || arg === 'm' || arg === 'l') {
-          this.applyFontSize(arg);
-        } else {
-          this.applyFontSize();
+        const res = parseFontSizeInput(argStr, this.fontSizePx);
+        if (res.px !== undefined) {
+          this.setFontSize(res.px, true);
+        } else if (res.error) {
+          this.showToast(res.error);
         }
-        return true;
-      }
-      case '/roll': {
-        let max = 6;
-        if (argStr) {
-          const parsed = parseInt(argStr, 10);
-          if (isNaN(parsed) || parsed < 2) {
-            this.showToast('Usage: /roll [max]');
-            return true;
-          }
-          max = Math.min(1_000_000, parsed);
-        }
-        const val = Math.floor(Math.random() * max) + 1;
-        this.dispatchUserChat(`🎲 ${nick} rolled ${val} (1-${max})`);
         return true;
       }
       case '/coin': {
-        if (argStr) {
-          this.showToast('Usage: /coin');
-          return true;
-        }
-        const side = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
-        this.dispatchUserChat(`🪙 ${nick} flipped a coin → ${side}!`);
+        const res = runCoinFlip(nick, argStr);
+        if (res.error) this.showToast(res.error);
+        else if (res.text) this.dispatchUserChat(res.text);
         return true;
       }
-      case '/rps': {
-        const hands = ['✊ ROCK', '✋ PAPER', '✌️ SCISSORS'];
-        if (!argStr) {
-          const pick = hands[Math.floor(Math.random() * hands.length)];
-          this.dispatchUserChat(`🎲 ${nick} randomly threw ${pick}!`);
-          return true;
-        }
-        const choice = argStr.toLowerCase();
-        let pick = '';
-        if (choice === 'r' || choice === 'rock') pick = hands[0];
-        else if (choice === 'p' || choice === 'paper') pick = hands[1];
-        else if (choice === 's' || choice === 'scissors') pick = hands[2];
-        else {
-          this.showToast('Usage: /rps [r|p|s]');
-          return true;
-        }
-        this.dispatchUserChat(`${nick} threw ${pick}!`);
-        return true;
-      }
-      case '/8ball': {
-        if (!argStr) {
-          this.showToast('Usage: /8ball <question>');
-          return true;
-        }
-        const ans = EIGHT_BALL_ANSWERS[Math.floor(Math.random() * EIGHT_BALL_ANSWERS.length)];
-        this.dispatchUserChat(`🎱 Q: ${argStr} → ${ans}`);
+      case '/roll': {
+        const res = runDiceRoll(nick, argStr);
+        if (res.error) this.showToast(res.error);
+        else if (res.text) this.dispatchUserChat(res.text);
         return true;
       }
       case '/pick': {
-        const items = (argStr.includes(',') ? argStr.split(',') : argStr.split(/\s+/))
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (items.length < 2) {
-          this.showToast('Usage: /pick option1, option2, ...');
-          return true;
-        }
-        const chosen = items[Math.floor(Math.random() * items.length)];
-        this.dispatchUserChat(`🎯 ${nick} picked: ${chosen} (from ${items.join(', ')})`);
+        const res = runPick(nick, argStr);
+        if (res.error) this.showToast(res.error);
+        else if (res.text) this.dispatchUserChat(res.text);
         return true;
       }
-      case '/theme':
-      case '/dark':
-      case '/light': {
-        let targetTheme: 'dark' | 'light' = this.profile.theme === 'dark' ? 'light' : 'dark';
-        if (cmd === '/dark') targetTheme = 'dark';
-        else if (cmd === '/light') targetTheme = 'light';
-        else if (argStr.toLowerCase() === 'dark' || argStr.toLowerCase() === 'light') {
-          targetTheme = argStr.toLowerCase() as 'dark' | 'light';
-        }
-        this.profile.theme = targetTheme;
-        this.engine.updateProfile(this.profile);
-        this.applyTheme();
-        const themeBtn = this.root.querySelector('#btn-theme');
-        if (themeBtn) {
-          themeBtn.textContent = targetTheme === 'dark' ? 'LIGHT' : 'DARK';
-        }
-        this.showToast(`Theme switched to ${targetTheme.toUpperCase()}`);
+      case '/rps': {
+        const res = runRps(nick, argStr);
+        if (res.error) this.showToast(res.error);
+        else if (res.text) this.dispatchUserChat(res.text);
         return true;
       }
-      default: {
-        const emote = ASCII_EMOTES[cmd];
-        if (emote) {
-          this.dispatchUserChat(this.expandInlineTokens(text));
-          return true;
-        }
+      case '/8ball': {
+        const res = runEightBall(nick, argStr);
+        if (res.error) this.showToast(res.error);
+        else if (res.text) this.dispatchUserChat(res.text);
+        return true;
+      }
+      case '/theme': {
+        const arg = argStr.toLowerCase();
+        const target = arg === 'dark' || arg === 'light' ? arg : undefined;
+        this.setTheme(target, true);
+        return true;
+      }
+      default:
         return false;
-      }
     }
   }
 
   private dispatchUserChat(text: string): void {
-    const msg = this.engine.sendChatMessage(text, this.replyTo, this.whisperTarget);
-    this.pushMessageToMemory(msg);
-
+    const reply = this.replyTo;
+    const whisper = this.whisperTarget;
     this.replyTo = undefined;
     this.engine.sendTyping(false);
     this.updateContextBannerDOM();
-    this.scrollToBottom();
+
+    void this.engine.sendChatMessage(text, reply, whisper).then((msg) => {
+      this.pushMessageToMemory(msg, false);
+      this.scrollToBottom();
+    });
+  }
+
+  private async handleSelectedFiles(fileList: FileList | File[]): Promise<void> {
+    this.notifications.unlockAudio();
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      if (file.size === 0) {
+        this.showToast(`Skipped empty file: ${file.name}`);
+        continue;
+      }
+      let blobToSend: Blob = file;
+      let mime = file.type || 'application/octet-stream';
+      const kind = classifyMime(mime, file.name);
+
+      if (kind === 'image') {
+        const compressed = await compressImageIfNeeded(file);
+        blobToSend = compressed.blob;
+        mime = compressed.mimeType;
+      }
+
+      if (blobToSend.size > MAX_MEDIA_BYTES) {
+        this.showToast(`${file.name} exceeds 25 MB limit.`);
+        continue;
+      }
+
+      try {
+        await this.engine.sendMediaAttachment(
+          blobToSend,
+          {
+            kind,
+            name: sanitizeFilename(file.name),
+            mimeType: mime,
+          },
+          this.replyTo,
+          this.whisperTarget,
+          (msg) => {
+            if (msg.attachment) {
+              msg.attachment.url = this.blobs.create(blobToSend);
+            }
+            this.replyTo = undefined;
+            this.updateContextBannerDOM();
+            this.pushMessageToMemory(msg, false);
+            this.scrollToBottom();
+          }
+        );
+      } catch (err: any) {
+        this.showToast(err?.message || `Failed to send ${file.name}`);
+      }
+    }
+  }
+
+  private async handleSendVoiceNote(
+    blob: Blob,
+    mimeType: string,
+    durationSec: number
+  ): Promise<void> {
+    this.notifications.unlockAudio();
+    const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+    const name = `voice-${durationSec}s.${ext}`;
+    try {
+      await this.engine.sendMediaAttachment(
+        blob,
+        { kind: 'audio', name, mimeType, durationSec },
+        this.replyTo,
+        this.whisperTarget,
+        (msg) => {
+          if (msg.attachment) {
+            msg.attachment.url = this.blobs.create(blob);
+          }
+          this.replyTo = undefined;
+          this.updateContextBannerDOM();
+          this.pushMessageToMemory(msg, false);
+          this.scrollToBottom();
+        }
+      );
+    } catch (err: any) {
+      this.showToast(err?.message || 'Failed to send voice note');
+    }
+  }
+
+  private async startCallFlow(video: boolean): Promise<void> {
+    this.notifications.unlockAudio();
+    this.composer.closePopovers();
+    if (this.localCallStream) {
+      if (video && !this.localVideoEnabled) {
+        try {
+          await this.engine.toggleVideo();
+          this.showToast('Camera enabled');
+        } catch (err: any) {
+          this.showToast(err?.message || 'Could not enable camera.');
+        }
+      } else {
+        this.showToast('Already in call — use the call bar controls.');
+      }
+      return;
+    }
+    try {
+      await this.engine.startCall({ video });
+      this.showToast(video ? 'Video call started' : 'Voice call started');
+    } catch (err: any) {
+      this.showToast(err?.message || 'Could not access microphone/camera.');
+    }
+  }
+
+  private async toggleScreenShareFlow(): Promise<void> {
+    try {
+      const active = await this.engine.toggleScreenShare();
+      this.showToast(active ? 'Screen sharing started' : 'Screen sharing stopped');
+    } catch (err: any) {
+      this.showToast(err?.message || 'Screen sharing canceled.');
+    }
   }
 
   // =========================================================================
@@ -563,26 +810,27 @@ class RevChatApp {
         <div class="drawer-backdrop" id="drawer-backdrop" style="display:${this.mobileDrawerOpen ? 'block' : 'none'};"></div>
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
-            <a href="./" class="brand" id="brand-logo" title="revchat // p2p">
-              <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
-              <span>revchat // p2p</span>
+            <a href="./" class="brand" id="brand-logo" title="revchat">
+              <img src="./favicon.svg" class="brand-logo" width="22" height="22" alt="" />
+              <span class="brand-name">revchat</span>
             </a>
-            <button class="small mobile-only" id="btn-close-drawer">✕</button>
+            <div class="sidebar-header-right">
+              <span class="sig-status" title="Network status">
+                <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
+                <span id="sig-label">${this.getSignalingBadgeText()}</span>
+              </span>
+              <button type="button" class="small icon-btn mobile-only" id="btn-close-drawer" title="Close Menu" aria-label="Close menu">${iconClose(15)}</button>
+            </div>
           </div>
 
-          <!-- Identity Section -->
+          <!-- Nickname Section -->
           <div class="side-section">
             <div class="sec-title">
               <span>Nickname</span>
-              <span id="sig-label">${this.getSignalingBadgeText()}</span>
             </div>
             <div class="field-row">
-              <input type="text" id="input-nick" value="${this.escapeAttr(this.profile.nickname)}" maxlength="24" placeholder="Nickname" />
-              <button id="btn-save-nick">SET</button>
-            </div>
-            <div class="kv-line copyable-line" id="btn-copy-peer" title="Click to copy Peer Code">
-              <span>My Peer Code:</span>
-              <code class="code-pill" id="my-peer-code">${this.escapeHtml(this.profile.clientId.toUpperCase())}</code>
+              <input type="text" id="input-nick" value="${escapeAttr(this.profile.nickname)}" maxlength="24" placeholder="Nickname" />
+              <button type="button" id="btn-save-nick">SET</button>
             </div>
           </div>
 
@@ -591,30 +839,18 @@ class RevChatApp {
             <div class="sec-title">
               <span>Room</span>
               <span class="tool-group">
-                <button class="small" id="btn-lobby-room">LOBBY</button>
-                <button class="small" id="btn-new-room">RANDOM</button>
+                <button type="button" class="small" id="btn-lobby-room">LOBBY</button>
+                <button type="button" class="small" id="btn-new-room">RANDOM</button>
               </span>
             </div>
             <div class="field-row">
-              <input type="text" id="input-room" value="${this.escapeAttr(this.roomId)}" maxlength="32" placeholder="Room Code" />
-              <button class="primary" id="btn-join-room">JOIN</button>
-            </div>
-          </div>
-
-          <!-- P2P Connect Tools -->
-          <div class="side-section">
-            <div class="sec-title">
-              <span>Follow Peer</span>
-              <button class="small" id="btn-open-invite">QR/LINK</button>
-            </div>
-            <div class="field-row">
-              <input type="text" id="input-direct-peer" placeholder="Peer Code" />
-              <button id="btn-dial-peer">FOLLOW</button>
+              <input type="text" id="input-room" value="${escapeAttr(this.roomId)}" maxlength="32" placeholder="Room Code" />
+              <button type="button" class="primary" id="btn-join-room">JOIN</button>
             </div>
           </div>
 
           <!-- Room Members List -->
-          <div class="side-section" style="flex:1;border-bottom:none;overflow-y:auto;">
+          <div class="side-section side-members">
             <div class="sec-title">
               <span>Members (<span id="peer-count-side">${this.peers.length}</span>)</span>
             </div>
@@ -623,72 +859,81 @@ class RevChatApp {
             </div>
           </div>
 
-          <!-- Sidebar Footer Toolbar: Direct Font Size (S/M/L) + Theme + Help -->
+          <!-- Sidebar Footer Toolbar -->
           <div class="side-toolbar">
-            <div class="size-group">
-              <button class="small ${this.fontSizeKey === 's' ? 'primary' : ''}" data-size-key="s" title="Small Font (14px)">S</button>
-              <button class="small ${this.fontSizeKey === 'm' ? 'primary' : ''}" data-size-key="m" title="Medium Font (17px)">M</button>
-              <button class="small ${this.fontSizeKey === 'l' ? 'primary' : ''}" data-size-key="l" title="Large Font (20px)">L</button>
+            <div class="size-group" role="group" aria-label="Chat text size">
+              <button type="button" class="small size-step-btn" id="btn-size-dec" title="Decrease text size" aria-label="Decrease text size" ${this.fontSizePx <= MIN_FONT_SIZE ? 'disabled' : ''}>A-</button>
+              <button type="button" class="small size-readout" id="btn-size-reset" title="Reset text size (${DEFAULT_FONT_SIZE}px)" aria-label="Reset text size">${this.fontSizePx}px</button>
+              <button type="button" class="small size-step-btn" id="btn-size-inc" title="Increase text size" aria-label="Increase text size" ${this.fontSizePx >= MAX_FONT_SIZE ? 'disabled' : ''}>A+</button>
             </div>
             <div class="tool-group">
-              <button class="small" id="btn-theme" title="Toggle Dark/Light Theme">
-                ${this.profile.theme === 'dark' ? 'LIGHT' : 'DARK'}
-              </button>
-              <button class="small" id="btn-help" title="Commands & Help">HELP</button>
+              <button
+                type="button"
+                class="small icon-btn"
+                id="btn-theme"
+                title="${this.profile.theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}"
+                aria-label="Toggle theme"
+              >${this.profile.theme === 'dark' ? iconSun(15) : iconMoon(15)}</button>
+              <button type="button" class="small icon-btn" id="btn-help" title="Commands & Help" aria-label="Help">${iconHelp(15)}</button>
             </div>
           </div>
         </aside>
 
         <!-- Main Chat Area -->
-        <main class="chat-pane">
+        <main class="chat-pane" id="chat-pane">
           <header class="chat-topbar">
             <div class="topbar-left">
-              <button class="mobile-only" id="btn-open-drawer">≡</button>
-              <span class="room-badge" id="topbar-room-title">#${this.escapeHtml(this.roomId)}</span>
-              <span class="badge ok" id="topbar-peer-badge">${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}</span>
+              <button type="button" class="icon-btn mobile-only" id="btn-open-drawer" title="Open Menu" aria-label="Open menu">${iconMenu(16)}</button>
+              <span class="room-badge" id="topbar-room-title">#${escapeHtml(this.roomId)}</span>
+              <span class="badge ${this.peers.length > 0 ? 'ok' : ''}" id="topbar-peer-badge">${this.peers.length} online</span>
             </div>
             <div class="topbar-actions">
-              <button class="small" id="btn-toggle-search" title="Search Messages">FIND</button>
+              <button type="button" class="small primary" id="btn-topbar-invite" title="QR Code & Invite Link">${iconShare(14)}<span>INVITE</span></button>
+              <button
+                type="button"
+                class="small icon-btn ${this.profile.soundMuted ? 'muted' : ''}"
+                id="btn-mute-sound"
+                title="${this.profile.soundMuted ? 'Sound Muted (click to unmute)' : 'Sound On (click to mute)'}"
+                aria-label="${this.profile.soundMuted ? 'Sound Muted (click to unmute)' : 'Sound On (click to mute)'}"
+              >${this.profile.soundMuted ? iconVolumeOff(15) : iconVolumeOn(15)}</button>
+              <button
+                type="button"
+                class="small icon-btn ${this.searchOpen ? 'active' : ''}"
+                id="btn-toggle-search"
+                title="Search Messages"
+                aria-label="Search messages"
+              >${iconSearch(15)}</button>
             </div>
           </header>
 
-          <div id="search-bar-container">
-            ${this.renderSearchBarHtml()}
-          </div>
+          <div id="call-dock-container"></div>
+          <div id="search-bar-container">${this.renderSearchBarHtml()}</div>
 
           <div class="message-stream" id="message-stream">
-            ${this.renderMessagesHtml()}
+            ${renderMessagesListHtml(this.messages, this.getMessageRenderContext())}
           </div>
 
-          <button class="jump-bottom-btn" id="btn-jump-bottom" style="display:none;">
+          <div class="drop-overlay" id="drop-overlay" style="display:none;">
+            Drop files here to send P2P (up to 25 MB)
+          </div>
+
+          <button type="button" class="jump-bottom-btn" id="btn-jump-bottom" style="display:none;">
             ↓ Jump to latest
           </button>
 
           <div id="slash-menu-container"></div>
           <div id="mention-menu-container"></div>
+          <div id="composer-context-container">${this.renderContextBannerHtml()}</div>
+          <div class="typing-bar" id="typing-bar" style="${this.typingPeers.length > 0 ? '' : 'display:none;'}">${this.renderTypingText()}</div>
 
-          <div id="composer-context-container">
-            ${this.renderContextBannerHtml()}
-          </div>
-
-          <div class="typing-bar" id="typing-bar">
-            ${this.renderTypingText()}
-          </div>
-
-          <form class="composer" id="composer-form">
-            <textarea
-              id="composer-input"
-              rows="1"
-              placeholder="Message #${this.escapeAttr(this.roomId)}"
-            ></textarea>
-            <button type="submit" class="primary send-btn">SEND</button>
-          </form>
+          ${this.composer.renderHtml()}
         </main>
       </div>
       <div id="modal-root"></div>
     `;
 
     this.bindEvents();
+    this.updateCallDockDOM();
     this.renderModal();
 
     const newStream = this.root.querySelector('#message-stream') as HTMLElement | null;
@@ -706,8 +951,8 @@ class RevChatApp {
     if (!this.searchOpen) return '';
     return `
       <div class="search-bar">
-        <input type="search" id="input-search" value="${this.escapeAttr(this.searchQuery)}" placeholder="Search messages..." />
-        <button class="small" id="btn-close-search">CLOSE</button>
+        <input type="search" id="input-search" value="${escapeAttr(this.searchQuery)}" placeholder="Search messages or filenames..." />
+        <button type="button" class="small" id="btn-close-search">CLOSE</button>
       </div>
     `;
   }
@@ -718,17 +963,16 @@ class RevChatApp {
     container.innerHTML = this.renderSearchBarHtml();
     if (this.searchOpen) {
       const input = container.querySelector('#input-search') as HTMLInputElement | null;
-      input?.addEventListener('input', (e) => {
-        this.searchQuery = (e.target as HTMLInputElement).value;
+      input?.addEventListener('input', () => {
+        this.searchQuery = input.value;
         this.appendOrRefreshMessages();
       });
       container.querySelector('#btn-close-search')?.addEventListener('click', () => {
         this.searchOpen = false;
-        if (this.searchQuery) {
-          this.searchQuery = '';
-          this.appendOrRefreshMessages();
-        }
+        this.searchQuery = '';
+        this.root.querySelector('#btn-toggle-search')?.classList.remove('active');
         this.updateSearchBarDOM();
+        this.appendOrRefreshMessages();
       });
       input?.focus();
     }
@@ -736,11 +980,7 @@ class RevChatApp {
 
   private renderPeersListHtml(): string {
     if (this.peers.length === 0) {
-      return `
-        <div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);padding:8px 0;">
-          No peers connected yet.
-        </div>
-      `;
+      return `<div class="peer-empty">No peers connected yet.</div>`;
     }
 
     return this.peers
@@ -748,151 +988,37 @@ class RevChatApp {
         const transportLabel = p.transport === 'local-broadcast' ? 'LOCAL' : 'WEBRTC';
         const rttLabel = p.rttMs !== null ? `${p.rttMs}ms` : '...';
         const isWhispering = this.whisperTarget?.peerId === p.peerId;
-        const peerCode = (
-          p.peerId.startsWith('revchat-p-') ? p.peerId.slice('revchat-p-'.length) : p.peerId
-        ).toUpperCase();
+        const metaTooltip = `${transportLabel} • ${rttLabel}${
+          p.iceRoute === 'relay' ? ' • RELAY' : p.iceRoute === 'direct' ? ' • DIRECT' : ''
+        }`;
+
         return `
-          <div class="peer-item">
-            <div class="peer-meta">
-              <div class="peer-name">${this.escapeHtml(p.nickname)}</div>
-              <div class="peer-sub">
-                <span>${transportLabel}</span>
-                <span>•</span>
-                <span>${rttLabel}</span>
-                ${p.isRoomBeaconHolder ? `<span class="badge">HOST</span>` : ''}
-              </div>
-            </div>
-            <div class="peer-actions" style="display:flex;gap:4px;align-items:center;">
-              <button
-                class="small"
-                data-copy-peer="${this.escapeAttr(peerCode)}"
-                title="Copy Peer Code (${this.escapeAttr(peerCode)})"
-              >
-                COPY
-              </button>
-              <button
-                class="small ${isWhispering ? 'primary' : ''}"
-                data-whisper-id="${this.escapeAttr(p.peerId)}"
-                data-whisper-name="${this.escapeAttr(p.nickname)}"
-                title="Send private 1:1 message"
-              >
-                DM
-              </button>
-            </div>
+          <div class="peer-item" title="${escapeAttr(metaTooltip)}">
+            <span class="peer-name">
+              ${escapeHtml(p.nickname)}${p.inCall ? ' <span class="badge ok">CALL</span>' : ''}
+            </span>
+            <button
+              type="button"
+              class="small ${isWhispering ? 'primary' : ''}"
+              data-whisper-id="${escapeAttr(p.peerId)}"
+              data-whisper-name="${escapeAttr(p.nickname)}"
+              title="Send private 1:1 DM"
+            >DM</button>
           </div>
         `;
       })
       .join('');
   }
 
-  private renderMessagesHtml(): string {
-    const q = this.searchQuery.trim().toLowerCase();
-    const filtered = q
-      ? this.messages.filter(
-          (m) =>
-            m.text.toLowerCase().includes(q) || m.senderName.toLowerCase().includes(q)
-        )
-      : this.messages;
-
-    if (filtered.length === 0) {
-      return `
-        <div class="empty-state">
-          <pre class="ascii-banner">
-  ____ _____ _   _  ____ _   _    _  _____ 
- |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
- | |_) |  _| | | | | |   | |_| | / _ \\ | |  
- |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
- |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
-          <div class="empty-header">#${this.escapeHtml(this.roomId)} — P2P Channel Ready</div>
-          <div class="empty-hint">Need help? Type <code>/help</code></div>
-        </div>
-      `;
-    }
-
-    return filtered.map((m) => this.renderSingleMessageHtml(m)).join('');
-  }
-
-  private renderSingleMessageHtml(m: ChatMessage): string {
-    const timeStr = new Date(m.timestamp).toLocaleTimeString([], {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-
-    if (m.system) {
-      return `
-        <div class="msg-row system">
-          [${timeStr}] * ${this.escapeHtml(m.text)}
-        </div>
-      `;
-    }
-
-    const isSelf =
-      m.senderId === this.signalingState.myPeerId ||
-      m.senderId.startsWith(`revchat-p-${this.profile.clientId.toLowerCase()}`);
-
-    const ackText = isSelf
-      ? m.ackedBy.length > 0
-        ? `✓✓ ${m.ackedBy.length}`
-        : '✓'
-      : '';
-
-    return `
-      <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''}">
-        <div class="msg-header">
-          <div>
-            <span class="msg-author ${isSelf ? 'self' : ''}">${this.escapeHtml(m.senderName)}</span>
-            <span class="msg-time">${timeStr}</span>
-          </div>
-          <div class="msg-meta-right">
-            ${
-              isSelf
-                ? `<span class="msg-ack" data-ack-id="${this.escapeAttr(m.id)}">${ackText}</span>`
-                : ''
-            }
-            <button
-              class="small msg-reply-btn"
-              data-copy-id="${this.escapeAttr(m.id)}"
-              title="Copy message"
-            >
-              copy
-            </button>
-            <button
-              class="small msg-reply-btn"
-              data-reply-id="${this.escapeAttr(m.id)}"
-              data-reply-sender="${this.escapeAttr(m.senderName)}"
-              data-reply-text="${this.escapeAttr(m.text.slice(0, 80))}"
-            >
-              reply
-            </button>
-          </div>
-        </div>
-        ${
-          m.targetPeerId
-            ? `<div class="msg-whisper-line">[DM → ${this.escapeHtml(m.targetPeerName || 'peer')}]</div>`
-            : ''
-        }
-        ${
-          m.replyTo
-            ? `<div class="msg-quote">@${this.escapeHtml(m.replyTo.senderName)}: ${this.escapeHtml(m.replyTo.text)}</div>`
-            : ''
-        }
-        <div class="msg-body">${this.formatMessageBody(m.text)}</div>
-      </div>
-    `;
-  }
-
   private renderContextBannerHtml(): string {
     if (!this.replyTo && !this.whisperTarget) return '';
     const parts: string[] = [];
     if (this.whisperTarget) {
-      parts.push(`Private DM to <b>@${this.escapeHtml(this.whisperTarget.nickname)}</b>`);
+      parts.push(`Private DM to <b>@${escapeHtml(this.whisperTarget.nickname)}</b>`);
     }
     if (this.replyTo) {
       parts.push(
-        `Replying to <b>@${this.escapeHtml(this.replyTo.senderName)}</b>: "${this.escapeHtml(
+        `Replying to <b>@${escapeHtml(this.replyTo.senderName)}</b>: "${escapeHtml(
           this.replyTo.text.slice(0, 50)
         )}"`
       );
@@ -900,50 +1026,39 @@ class RevChatApp {
     return `
       <div class="composer-context">
         <span>${parts.join(' • ')}</span>
-        <button class="small" id="btn-clear-context">✕ CANCEL</button>
+        <button type="button" class="small" id="btn-clear-context">${iconClose(12)}<span>CANCEL</span></button>
       </div>
     `;
   }
 
   private renderTypingText(): string {
-    if (this.typingPeers.length === 0) {
-      return `<span>Ready • ${this.signalingState.status === 'ready' ? 'WebRTC Online' : 'Local Mode'}</span>`;
-    }
-    const names = this.typingPeers.map((t) => this.escapeHtml(t.nickname)).join(', ');
-    return `<span><b>${names}</b> typing...</span>`;
+    if (this.typingPeers.length === 0) return '';
+    const names = this.typingPeers.map((t) => escapeHtml(t.nickname)).join(', ');
+    return `<span><b>${names}</b> is typing...</span>`;
   }
 
   private getSignalingBadgeText(): string {
-    if (this.signalingState.status === 'ready') {
-      return this.signalingState.isBeaconHost ? 'ONLINE (HOST)' : 'ONLINE';
-    }
+    if (this.signalingState.status === 'ready') return 'ONLINE';
     if (this.signalingState.status === 'initializing') return 'CONNECTING...';
     return 'LOCAL';
   }
 
   private updateStatusDOM(): void {
     const dot = this.root.querySelector('#sig-dot');
-    if (dot) {
-      dot.className = `status-dot ${this.signalingState.status}`;
-    }
+    if (dot) dot.className = `status-dot ${this.signalingState.status}`;
     const label = this.root.querySelector('#sig-label');
-    if (label) {
-      label.textContent = this.getSignalingBadgeText();
-    }
-    this.updateTypingDOM();
+    if (label) label.textContent = this.getSignalingBadgeText();
   }
 
   private updatePeersDOM(): void {
     const listEl = this.root.querySelector('#peer-list-container');
-    if (listEl) {
-      listEl.innerHTML = this.renderPeersListHtml();
-    }
+    if (listEl) listEl.innerHTML = this.renderPeersListHtml();
     const sideCount = this.root.querySelector('#peer-count-side');
     if (sideCount) sideCount.textContent = String(this.peers.length);
-
     const topBadge = this.root.querySelector('#topbar-peer-badge');
     if (topBadge) {
-      topBadge.textContent = `${this.peers.length} peer${this.peers.length === 1 ? '' : 's'}`;
+      topBadge.className = `badge ${this.peers.length > 0 ? 'ok' : ''}`;
+      topBadge.textContent = `${this.peers.length} online`;
     }
   }
 
@@ -951,8 +1066,7 @@ class RevChatApp {
     const container = this.root.querySelector('#composer-context-container');
     if (container) {
       container.innerHTML = this.renderContextBannerHtml();
-      const clearBtn = container.querySelector('#btn-clear-context');
-      clearBtn?.addEventListener('click', () => {
+      container.querySelector('#btn-clear-context')?.addEventListener('click', () => {
         this.replyTo = undefined;
         this.whisperTarget = undefined;
         this.updateContextBannerDOM();
@@ -962,10 +1076,77 @@ class RevChatApp {
   }
 
   private updateTypingDOM(): void {
-    const bar = this.root.querySelector('#typing-bar');
-    if (bar) {
+    const bar = this.root.querySelector('#typing-bar') as HTMLElement | null;
+    if (!bar) return;
+    if (this.typingPeers.length === 0) {
+      bar.style.display = 'none';
+      bar.innerHTML = '';
+    } else {
+      bar.style.display = 'block';
       bar.innerHTML = this.renderTypingText();
     }
+  }
+
+  private updateCallDockDOM(): void {
+    const container = this.root.querySelector('#call-dock-container') as HTMLElement | null;
+    const peersInCall = this.peers.filter((p) => p.inCall);
+    this.callDock.render(
+      container,
+      {
+        localStream: this.localCallStream,
+        localVideoEnabled: this.localVideoEnabled,
+        localMuted: this.localCallMuted,
+        isScreenShare: this.isScreenShare,
+        canSwitchCamera: this.engine?.canSwitchCamera() ?? false,
+        remoteStreams: this.remoteCallStreams,
+        peersInCall,
+        myNickname: this.profile.nickname,
+      },
+      {
+        onJoinCall: () => void this.startCallFlow(false),
+        onToggleMute: () => this.engine.toggleMute(),
+        onToggleVideo: () =>
+          void this.engine.toggleVideo().catch((err: any) =>
+            this.showToast(err?.message || 'Camera action failed.')
+          ),
+        onSwitchCamera: () =>
+          void this.engine.switchCamera().catch((err: any) =>
+            this.showToast(err?.message || 'Camera action failed.')
+          ),
+        onToggleScreenShare: () => void this.toggleScreenShareFlow(),
+        onLeaveCall: () => this.engine.leaveCall(),
+      }
+    );
+  }
+
+  private rerenderSingleMessageRow(messageId: string): void {
+    const msg = this.messageMap.get(messageId);
+    const row = this.root.querySelector(`.msg-row[data-msg-id="${messageId}"]`);
+    if (!msg || !row) return;
+    const idx = this.messages.findIndex((m) => m.id === messageId);
+    const prev = idx > 0 ? this.messages[idx - 1] : undefined;
+    const grouped = shouldGroupMessages(prev, msg);
+    row.outerHTML = renderSingleMessageHtml(msg, this.getMessageRenderContext(), grouped);
+  }
+
+  private applyReactionLocally(messageId: string, emoji: string, actorId: string): void {
+    if (!isAllowedReaction(emoji)) return;
+    const msg = this.messageMap.get(messageId);
+    if (!msg || msg.deleted) return;
+    if (!msg.reactions) msg.reactions = {};
+    const list = msg.reactions[emoji] ? [...msg.reactions[emoji]] : [];
+    const existingIdx = list.indexOf(actorId);
+    if (existingIdx >= 0) {
+      list.splice(existingIdx, 1);
+    } else {
+      list.push(actorId);
+    }
+    if (list.length === 0) {
+      delete msg.reactions[emoji];
+    } else {
+      msg.reactions[emoji] = list;
+    }
+    this.rerenderSingleMessageRow(messageId);
   }
 
   private appendSingleMessageDOM(msg: ChatMessage, evicted: boolean): void {
@@ -976,14 +1157,20 @@ class RevChatApp {
     const stream = this.root.querySelector('#message-stream') as HTMLElement | null;
     if (!stream) return;
 
-    const wasAtBottom =
-      stream.scrollHeight - stream.scrollTop - stream.clientHeight < 65;
-
+    const wasAtBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 65;
     stream.querySelector('.empty-state')?.remove();
     if (evicted) {
       stream.querySelector('.msg-row')?.remove();
+      if (this.messages[0]) {
+        this.rerenderSingleMessageRow(this.messages[0].id);
+      }
     }
-    stream.insertAdjacentHTML('beforeend', this.renderSingleMessageHtml(msg));
+    const prev = this.messages.length >= 2 ? this.messages[this.messages.length - 2] : undefined;
+    const grouped = shouldGroupMessages(prev, msg);
+    stream.insertAdjacentHTML(
+      'beforeend',
+      renderSingleMessageHtml(msg, this.getMessageRenderContext(), grouped)
+    );
 
     if (wasAtBottom) {
       this.scrollToBottom();
@@ -997,14 +1184,12 @@ class RevChatApp {
     const stream = this.root.querySelector('#message-stream') as HTMLElement | null;
     if (!stream) return;
 
-    const wasAtBottom =
-      stream.scrollHeight - stream.scrollTop - stream.clientHeight < 65;
-    stream.innerHTML = this.renderMessagesHtml();
+    const wasAtBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 65;
+    stream.innerHTML = renderMessagesListHtml(this.messages, this.getMessageRenderContext());
 
     if (wasAtBottom) {
       this.scrollToBottom();
     } else {
-      this.unreadWhileScrolled++;
       this.updateJumpButtonDOM();
     }
   }
@@ -1034,9 +1219,6 @@ class RevChatApp {
     }
   }
 
-  // =========================================================================
-  // MODALS (INVITE / QR, HELP)
-  // =========================================================================
   private async openInviteModal(): Promise<void> {
     this.activeModal = 'invite';
     this.inviteQrSvg = await generateQrSvg(this.getInviteUrl());
@@ -1044,211 +1226,34 @@ class RevChatApp {
   }
 
   private renderModal(): void {
-    const modalRoot = this.root.querySelector('#modal-root');
-    if (!modalRoot) return;
-
-    if (this.activeModal === 'none') {
-      modalRoot.innerHTML = '';
-      return;
-    }
-
-    if (this.activeModal === 'invite') {
-      const inviteUrl = this.getInviteUrl();
-      const canNativeShare = typeof navigator.share === 'function';
-      modalRoot.innerHTML = `
-        <div class="modal-backdrop" id="modal-backdrop">
-          <div class="modal">
-            <div class="modal-header">
-              <span>INVITE TO #${this.escapeHtml(this.roomId)}</span>
-              <button class="small" id="btn-modal-close">✕</button>
-            </div>
-            <div class="modal-body">
-              <div class="qr-box">${this.inviteQrSvg}</div>
-              <div style="text-align:center;font-family:var(--font-mono);font-size:12px;">
-                Scan with mobile camera to join <b>#${this.escapeHtml(this.roomId)}</b> immediately
-              </div>
-              <div class="step-block">
-                <div class="step-title">Shareable Invite Link</div>
-                <div class="field-row">
-                  <input type="text" readonly value="${this.escapeAttr(inviteUrl)}" id="invite-url-input" />
-                  <button class="primary" id="btn-copy-invite">COPY</button>
-                  ${canNativeShare ? `<button id="btn-native-share">SHARE</button>` : ''}
-                </div>
-              </div>
-              <div class="step-block">
-                <div class="step-title">Room Code</div>
-                <div class="kv-line">
-                  <span>Room Code:</span>
-                  <code class="code-pill">${this.escapeHtml(this.roomId)}</code>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      modalRoot.querySelector('#btn-modal-close')?.addEventListener('click', () => {
-        this.activeModal = 'none';
-        this.renderModal();
-      });
-      modalRoot.querySelector('#modal-backdrop')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) {
+    const modalRoot = this.root.querySelector('#modal-root') as HTMLElement | null;
+    renderModalDOM(
+      modalRoot,
+      {
+        activeModal: this.activeModal,
+        roomId: this.roomId,
+        inviteUrl: this.getInviteUrl(),
+        inviteQrSvg: this.inviteQrSvg,
+        lightboxUrl: this.lightboxUrl,
+        lightboxName: this.lightboxName,
+      },
+      {
+        onClose: () => {
           this.activeModal = 'none';
           this.renderModal();
-        }
-      });
-      modalRoot.querySelector('#btn-copy-invite')?.addEventListener('click', () => {
-        navigator.clipboard?.writeText(inviteUrl);
-        this.showToast('Invite URL copied to clipboard');
-      });
-      modalRoot.querySelector('#btn-native-share')?.addEventListener('click', () => {
-        navigator
-          .share({
-            title: `Join #${this.roomId} on revchat`,
-            text: `Join my P2P chat room #${this.roomId}`,
-            url: inviteUrl,
-          })
-          .catch(() => {});
-      });
-      return;
-    }
-
-    if (this.activeModal === 'help') {
-      modalRoot.innerHTML = `
-        <div class="modal-backdrop" id="modal-backdrop">
-          <div class="modal help-modal">
-            <div class="modal-header">
-              <span>REVCHAT // GUIDE & COMMANDS</span>
-              <button class="small" id="btn-modal-close">✕</button>
-            </div>
-            <div class="modal-body help-modal-body">
-              <pre class="ascii-banner">
-  ____ _____ _   _  ____ _   _    _  _____ 
- |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
- | |_) |  _| | | | | |   | |_| | / _ \\ | |  
- |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
- |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
-
-              <div class="help-section">
-                <div class="help-section-title">How to Chat</div>
-                <div class="help-guide-card">
-                  <div class="help-guide-lead">
-                    <b>You get a fresh Peer Code every visit.</b>
-                    <span class="help-guide-sub">No sign-up required. Just enter the same room to talk.</span>
-                  </div>
-                  <div class="help-guide-steps">
-                    <div class="help-step-item">
-                      <span class="help-step-num">1</span>
-                      <div class="help-step-content">
-                        <b>Use the Same Room Code</b>
-                        <span>Tell your friends a room name. Anyone in the same room is connected instantly.</span>
-                      </div>
-                    </div>
-                    <div class="help-step-item">
-                      <span class="help-step-num">2</span>
-                      <div class="help-step-content">
-                        <b>Or Share Room Link</b>
-                        <span>Tap <code>[QR/LINK]</code> at the top right to share your link. Anyone who opens it enters your room immediately.</span>
-                      </div>
-                    </div>
-                    <div class="help-step-item">
-                      <span class="help-step-num">3</span>
-                      <div class="help-step-content">
-                        <b>Or Follow a Friend</b>
-                        <span>Don't know where your friend is? Paste their Peer Code into <code>[FOLLOW]</code> to jump straight into their room.</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="help-guide-footer">
-                    * No database, no accounts. Once in the same room, you talk device-to-device with zero logs. Close the tab to wipe everything.
-                  </div>
-                </div>
-              </div>
-
-              <div class="help-section">
-                <div class="help-section-title">Commands</div>
-                
-                <div class="help-group">
-                  <div class="help-group-title">1. Core Settings</div>
-                  <div class="help-cmd-row"><code>/nick &lt;name&gt;</code><span>Change your display nickname</span></div>
-                  <div class="help-cmd-row"><code>/room [code]</code><span>Switch room (or random room if omitted)</span></div>
-                  <div class="help-cmd-row"><code>/follow &lt;code&gt;</code><span>Follow a peer into their active room</span></div>
-                </div>
-
-                <div class="help-group">
-                  <div class="help-group-title">2. Chat Expression</div>
-                  <div class="help-cmd-row"><code>/bold &lt;text&gt;</code><span>Send bold message (**text**)</span></div>
-                  <div class="help-cmd-row"><code>/italic &lt;text&gt;</code><span>Send italic message (*text*)</span></div>
-                </div>
-
-                <div class="help-group">
-                  <div class="help-group-title">3. Mini-Games (Strict Syntax)</div>
-                  <div class="help-cmd-row"><code>/coin</code><span>Flip a coin (HEADS / TAILS)</span></div>
-                  <div class="help-cmd-row"><code>/roll [max]</code><span>Roll a dice (default 1-6)</span></div>
-                  <div class="help-cmd-row"><code>/pick &lt;a, b, ...&gt;</code><span>Randomly pick one from options</span></div>
-                  <div class="help-cmd-row"><code>/rps [r|p|s]</code><span>Throw Rock, Paper, or Scissors (random if omitted)</span></div>
-                  <div class="help-cmd-row"><code>/8ball &lt;question&gt;</code><span>Ask the Magic 8-Ball</span></div>
-                </div>
-
-                <div class="help-group">
-                  <div class="help-group-title">4. ASCII Emotes (In-place)</div>
-                  <div class="help-cmd-row"><code>/rev</code><span>(ง ͡° ͜ʖ ͡°)ง🏴 (Signature)</span></div>
-                  <div class="help-cmd-row"><code>/revrev</code><span>🚩( ͡° ͜ʖ ͡°)🚩 (Signature)</span></div>
-                  <div class="help-cmd-row"><code>/shrug</code><span>¯\\_(ツ)_/¯</span></div>
-                  <div class="help-cmd-row"><code>/flip</code><span>(╯°□°）╯︵ ┻━┻</span></div>
-                  <div class="help-cmd-row"><code>/unflip</code><span>┬─┬ ノ( ゜-゜ノ)</span></div>
-                  <div class="help-cmd-row"><code>/lenny</code><span>( ͡° ͜ʖ ͡°)</span></div>
-                  <div class="help-cmd-row"><code>/look</code><span>ಠ_ಠ</span></div>
-                  <div class="help-cmd-row"><code>/gib</code><span>༼ つ ◕_◕ ༽つ</span></div>
-                  <div class="help-cmd-row"><code>/fight</code><span>(ง'̀-'́)ง</span></div>
-                  <div class="help-cmd-row"><code>/cry</code><span>(ಥ﹏ಥ)</span></div>
-                  <div class="help-cmd-row"><code>/love</code><span>(｡♥‿♥｡)</span></div>
-                  <div class="help-cmd-row"><code>/dance</code><span>♪┏(・o･)┛♪</span></div>
-                </div>
-
-                <div class="help-group">
-                  <div class="help-group-title">5. Utility & Appearance</div>
-                  <div class="help-cmd-row"><code>/clear</code><span>Clear local chat view</span></div>
-                  <div class="help-cmd-row"><code>/size [s|m|l]</code><span>Change main panel font size</span></div>
-                  <div class="help-cmd-row"><code>/theme [dark|light]</code><span>Switch theme (aliases: /dark, /light)</span></div>
-                  <div class="help-cmd-row"><code>/help</code><span>Open commands & help guide</span></div>
-                </div>
-
-                <div class="help-group">
-                  <div class="help-group-title">6. Mentions</div>
-                  <div class="help-cmd-row"><code>@&lt;nickname&gt;</code><span>Mention a peer in the room</span></div>
-                  <div class="help-cmd-row"><code>@me</code><span>Automatically expands to your current nickname</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      modalRoot.querySelector('#btn-modal-close')?.addEventListener('click', () => {
-        this.activeModal = 'none';
-        this.renderModal();
-      });
-      modalRoot.querySelector('#modal-backdrop')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) {
-          this.activeModal = 'none';
-          this.renderModal();
-        }
-      });
-    }
+        },
+        onToast: (msg) => this.showToast(msg),
+      }
+    );
   }
 
   // =========================================================================
   // EVENT BINDINGS
   // =========================================================================
   private bindEvents(): void {
-    // Brand logo reload & navigation (supports Ctrl/Cmd/Wheel click for new tab like YouTube)
     this.root.querySelector('#brand-logo')?.addEventListener('click', (e) => {
       const me = e as MouseEvent;
-      if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) {
-        return;
-      }
+      if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
       e.preventDefault();
       window.location.reload();
     });
@@ -1262,96 +1267,28 @@ class RevChatApp {
       this.setMobileDrawerOpen(false);
     });
 
-    // Font Size Direct Buttons & Theme
-    this.root.querySelectorAll('[data-size-key]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const key = btn.getAttribute('data-size-key') as 's' | 'm' | 'l' | null;
-        if (key) {
-          this.applyFontSize(key);
-        }
-      });
+    // Topbar actions
+    this.root.querySelector('#btn-topbar-invite')?.addEventListener('click', () => {
+      this.notifications.unlockAudio();
+      void this.openInviteModal();
     });
-    this.root.querySelector('#btn-theme')?.addEventListener('click', (e) => {
-      const current = document.documentElement.getAttribute('data-theme');
-      this.profile.theme = current === 'dark' ? 'light' : 'dark';
-      this.applyTheme();
-      const btn = e.currentTarget as HTMLElement | null;
-      if (btn) {
-        btn.textContent = this.profile.theme === 'dark' ? 'LIGHT' : 'DARK';
-      }
+    this.root.querySelector('#btn-mute-sound')?.addEventListener('click', () => {
+      this.notifications.unlockAudio();
+      this.toggleSoundMute();
     });
 
-    // Nickname
-    const saveNick = () => {
-      const input = this.root.querySelector('#input-nick') as HTMLInputElement | null;
-      const val = sanitizeString(input?.value, MAX_NICKNAME_LENGTH).trim();
-      if (val) {
-        this.profile.nickname = val;
-        this.engine.updateProfile(this.profile);
-        this.showToast(`Saved nickname: ${this.profile.nickname}`);
-      }
-    };
-    this.root.querySelector('#btn-save-nick')?.addEventListener('click', saveNick);
-    this.root.querySelector('#input-nick')?.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter') {
-        e.preventDefault();
-        saveNick();
-      }
+    // Text Size, Theme, Help
+    this.root.querySelector('#btn-size-dec')?.addEventListener('click', () => {
+      this.setFontSize(this.fontSizePx - FONT_SIZE_STEP);
     });
-
-    // Copy My Peer Code
-    this.root.querySelector('#btn-copy-peer')?.addEventListener('click', () => {
-      navigator.clipboard?.writeText(this.profile.clientId.toUpperCase());
-      this.showToast('Peer code copied!');
+    this.root.querySelector('#btn-size-reset')?.addEventListener('click', () => {
+      this.setFontSize(DEFAULT_FONT_SIZE);
     });
-
-    // Room Join / Random
-    const joinRoomFromInput = () => {
-      const input = this.root.querySelector('#input-room') as HTMLInputElement | null;
-      if (input && input.value.trim()) {
-        this.switchRoom(input.value.trim());
-      }
-    };
-    this.root.querySelector('#btn-join-room')?.addEventListener('click', joinRoomFromInput);
-    this.root.querySelector('#input-room')?.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter') {
-        e.preventDefault();
-        joinRoomFromInput();
-      }
+    this.root.querySelector('#btn-size-inc')?.addEventListener('click', () => {
+      this.setFontSize(this.fontSizePx + FONT_SIZE_STEP);
     });
-    this.root.querySelector('#btn-lobby-room')?.addEventListener('click', () => {
-      this.switchRoom('LOBBY');
-    });
-    this.root.querySelector('#btn-new-room')?.addEventListener('click', () => {
-      this.switchRoom(generateRoomCode());
-    });
-
-    // Follow Peer (Follows target peer into their room)
-    const dialPeer = () => {
-      const input = this.root.querySelector('#input-direct-peer') as HTMLInputElement | null;
-      const val = input?.value.trim() || '';
-      if (!val) return;
-      const ok = this.engine.connectToDirectPeer(val, true);
-      if (ok) {
-        if (input) input.value = '';
-        this.setMobileDrawerOpen(false);
-        this.showToast(`Following ${val} into their room...`);
-      } else {
-        this.showToast('Could not follow peer (check code)');
-      }
-    };
-    this.root.querySelector('#btn-dial-peer')?.addEventListener('click', dialPeer);
-    this.root.querySelector('#input-direct-peer')?.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter') {
-        e.preventDefault();
-        dialPeer();
-      }
-    });
-
-    // Modals
-    this.root.querySelector('#btn-open-invite')?.addEventListener('click', () => {
-      this.setMobileDrawerOpen(false);
-      this.openInviteModal();
+    this.root.querySelector('#btn-theme')?.addEventListener('click', () => {
+      this.setTheme(undefined, false);
     });
     this.root.querySelector('#btn-help')?.addEventListener('click', () => {
       this.setMobileDrawerOpen(false);
@@ -1359,9 +1296,50 @@ class RevChatApp {
       this.renderModal();
     });
 
+    // Nickname
+    const saveNick = () => {
+      const input = this.root.querySelector('#input-nick') as HTMLInputElement | null;
+      if (!this.setNickname(input?.value || '') && input) {
+        input.value = this.profile.nickname;
+      }
+    };
+    this.root.querySelector('#btn-save-nick')?.addEventListener('click', saveNick);
+    this.root.querySelector('#input-nick')?.addEventListener('keydown', (e) => {
+      const ke = e as KeyboardEvent;
+      if (ke.isComposing || ke.keyCode === 229) return;
+      if (ke.key === 'Enter') {
+        ke.preventDefault();
+        saveNick();
+      }
+    });
+
+    // Rooms
+    const joinRoomFromInput = () => {
+      const input = this.root.querySelector('#input-room') as HTMLInputElement | null;
+      if (input && input.value.trim()) {
+        void this.switchRoom(input.value.trim(), null);
+      }
+    };
+    this.root.querySelector('#btn-join-room')?.addEventListener('click', joinRoomFromInput);
+    this.root.querySelector('#input-room')?.addEventListener('keydown', (e) => {
+      const ke = e as KeyboardEvent;
+      if (ke.isComposing || ke.keyCode === 229) return;
+      if (ke.key === 'Enter') {
+        ke.preventDefault();
+        joinRoomFromInput();
+      }
+    });
+    this.root.querySelector('#btn-lobby-room')?.addEventListener('click', () => {
+      void this.switchRoom('LOBBY', null);
+    });
+    this.root.querySelector('#btn-new-room')?.addEventListener('click', () => {
+      void this.switchToRandomRoom();
+    });
+
     // Search
-    this.root.querySelector('#btn-toggle-search')?.addEventListener('click', () => {
+    this.root.querySelector('#btn-toggle-search')?.addEventListener('click', (e) => {
       this.searchOpen = !this.searchOpen;
+      (e.currentTarget as HTMLElement | null)?.classList.toggle('active', this.searchOpen);
       if (!this.searchOpen && this.searchQuery) {
         this.searchQuery = '';
         this.appendOrRefreshMessages();
@@ -1370,57 +1348,57 @@ class RevChatApp {
     });
     this.updateSearchBarDOM();
 
-    // Message Stream Scroll & Jump
+    // Stream Scroll & Drag/Drop File Upload
     const stream = this.root.querySelector('#message-stream') as HTMLElement | null;
     stream?.addEventListener('scroll', () => {
       const atBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 50;
       this.isAtBottom = atBottom;
-      if (atBottom) {
-        this.unreadWhileScrolled = 0;
-      }
+      if (atBottom) this.unreadWhileScrolled = 0;
       this.updateJumpButtonDOM();
     });
     this.root.querySelector('#btn-jump-bottom')?.addEventListener('click', () => {
       this.scrollToBottom();
     });
 
-    // Composer Input & Submit
-    const form = this.root.querySelector('#composer-form') as HTMLFormElement | null;
-    const textarea = this.root.querySelector('#composer-input') as HTMLTextAreaElement | null;
-
-    const autoResize = () => {
-      if (!textarea) return;
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(120, textarea.scrollHeight)}px`;
-    };
-
-    textarea?.addEventListener('input', () => {
-      autoResize();
-      this.slashMenuDismissed = false;
-      this.slashMenuIndex = 0;
-      this.updateSlashMenuDOM(textarea.value);
-
-      this.mentionMenuDismissed = false;
-      this.mentionMenuIndex = 0;
-      this.updateMentionMenuDOM(textarea.value);
-
-      const now = Date.now();
-      if (textarea.value.trim().length > 0) {
-        if (now - this.lastTypingSentAt > 2000) {
-          this.lastTypingSentAt = now;
-          this.engine.sendTyping(true);
-        }
-        if (this.stopTypingTimer) clearTimeout(this.stopTypingTimer);
-        this.stopTypingTimer = window.setTimeout(() => {
-          this.engine.sendTyping(false);
-        }, 3000);
-      } else {
-        this.engine.sendTyping(false);
+    const chatPane = this.root.querySelector('#chat-pane') as HTMLElement | null;
+    const dropOverlay = this.root.querySelector('#drop-overlay') as HTMLElement | null;
+    let dragDepth = 0;
+    chatPane?.addEventListener('dragenter', (e) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        dragDepth++;
+        if (dropOverlay) dropOverlay.style.display = 'flex';
+      }
+    });
+    chatPane?.addEventListener('dragleave', () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0 && dropOverlay) dropOverlay.style.display = 'none';
+    });
+    chatPane?.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+    });
+    chatPane?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragDepth = 0;
+      if (dropOverlay) dropOverlay.style.display = 'none';
+      if (e.dataTransfer?.files?.length) {
+        void this.handleSelectedFiles(e.dataTransfer.files);
       }
     });
 
+    // Composer
+    this.composer.bindEvents();
+    const form = this.root.querySelector('#composer-form') as HTMLFormElement | null;
+    const textarea = this.composer.getTextarea();
+
+    textarea?.addEventListener('input', () => {
+      this.composer.autoResize();
+      this.handleComposerTypingInput(textarea.value);
+    });
+
     textarea?.addEventListener('keydown', (e) => {
-      const matches = this.getMatchingSlashCommands(textarea.value);
+      if (e.isComposing || e.keyCode === 229) return;
+
+      const matches = getMatchingSlashCommands(textarea.value, this.slashMenuDismissed);
       if (matches.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -1436,6 +1414,7 @@ class RevChatApp {
         }
         if (e.key === 'Escape') {
           e.preventDefault();
+          e.stopPropagation();
           this.slashMenuDismissed = true;
           this.updateSlashMenuDOM(textarea.value);
           return;
@@ -1443,22 +1422,35 @@ class RevChatApp {
         if (e.key === 'Tab') {
           e.preventDefault();
           const chosen = matches[this.slashMenuIndex] || matches[0];
-          this.applySlashCommandSelection(chosen, textarea, autoResize);
+          textarea.value = chosen.instant ? chosen.cmd : `${chosen.cmd} `;
+          this.composer.autoResize();
+          this.updateSlashMenuDOM(textarea.value);
+          textarea.focus();
           return;
         }
         if (e.key === 'Enter' && !e.shiftKey) {
           const chosen = matches[this.slashMenuIndex] || matches[0];
           const trimmed = textarea.value.trim().toLowerCase();
-          const isMidSentence = !textarea.value.startsWith('/') || textarea.value.includes(' ');
-          if (isMidSentence || trimmed !== chosen.cmd || chosen.needsArgs) {
+          if (chosen.instant || (!chosen.needsArgs && trimmed === chosen.cmd)) {
             e.preventDefault();
-            this.applySlashCommandSelection(chosen, textarea, autoResize);
+            textarea.value = '';
+            this.composer.autoResize();
+            this.updateSlashMenuDOM('');
+            this.handleSendMessage(chosen.cmd);
             return;
           }
+          e.preventDefault();
+          this.applySlashCommandSelection(chosen, textarea);
+          return;
         }
       }
 
-      const mentionMatches = this.getMatchingMentions(textarea.value);
+      const mentionMatches = getMatchingMentions(
+        textarea.value,
+        this.profile.nickname,
+        this.peers,
+        this.mentionMenuDismissed
+      );
       if (mentionMatches.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -1468,12 +1460,14 @@ class RevChatApp {
         }
         if (e.key === 'ArrowUp') {
           e.preventDefault();
-          this.mentionMenuIndex = (this.mentionMenuIndex - 1 + mentionMatches.length) % mentionMatches.length;
+          this.mentionMenuIndex =
+            (this.mentionMenuIndex - 1 + mentionMatches.length) % mentionMatches.length;
           this.updateMentionMenuDOM(textarea.value);
           return;
         }
         if (e.key === 'Escape') {
           e.preventDefault();
+          e.stopPropagation();
           this.mentionMenuDismissed = true;
           this.updateMentionMenuDOM(textarea.value);
           return;
@@ -1481,17 +1475,18 @@ class RevChatApp {
         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
           e.preventDefault();
           const chosen = mentionMatches[this.mentionMenuIndex] || mentionMatches[0];
-          this.applyMentionSelection(chosen, textarea, autoResize);
+          this.applyMentionSelection(chosen, textarea);
           return;
         }
       }
 
-      if (e.key === 'Enter' && !e.shiftKey) {
+      const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
+      if (e.key === 'Enter' && !e.shiftKey && !isCoarsePointer) {
         e.preventDefault();
         if (textarea.value.trim()) {
           const val = textarea.value;
           textarea.value = '';
-          autoResize();
+          this.composer.autoResize();
           this.updateSlashMenuDOM('');
           this.updateMentionMenuDOM('');
           this.handleSendMessage(val);
@@ -1504,7 +1499,7 @@ class RevChatApp {
       if (textarea && textarea.value.trim()) {
         const val = textarea.value;
         textarea.value = '';
-        autoResize();
+        this.composer.autoResize();
         this.updateSlashMenuDOM('');
         this.updateMentionMenuDOM('');
         this.handleSendMessage(val);
@@ -1518,40 +1513,33 @@ class RevChatApp {
     this.updateContextBannerDOM();
   }
 
-  private getMatchingSlashCommands(rawInput: string): SlashCommandDef[] {
-    if (this.slashMenuDismissed) return [];
-    if (rawInput.includes('\n')) return [];
+  private handleComposerTypingInput(val: string): void {
+    this.slashMenuDismissed = false;
+    this.slashMenuIndex = 0;
+    this.updateSlashMenuDOM(val);
 
-    if (rawInput.startsWith('/') && !rawInput.includes(' ')) {
-      const prefix = rawInput.toLowerCase();
-      return SLASH_COMMANDS.filter((item) => item.cmd.startsWith(prefix));
+    this.mentionMenuDismissed = false;
+    this.mentionMenuIndex = 0;
+    this.updateMentionMenuDOM(val);
+
+    const now = Date.now();
+    if (val.trim().length > 0) {
+      if (now - this.lastTypingSentAt > 2000) {
+        this.lastTypingSentAt = now;
+        this.engine.sendTyping(true);
+      }
+      if (this.stopTypingTimer) clearTimeout(this.stopTypingTimer);
+      this.stopTypingTimer = window.setTimeout(() => {
+        this.engine.sendTyping(false);
+      }, 3000);
+    } else {
+      this.engine.sendTyping(false);
     }
-
-    const match = rawInput.match(/(?:^|\s)(\/[a-z0-9]*)$/i);
-    if (!match) return [];
-    const token = match[1].toLowerCase();
-    return SLASH_COMMANDS.filter(
-      (item) => Boolean(ASCII_EMOTES[item.cmd]) && item.cmd.startsWith(token)
-    );
   }
 
-  private applySlashCommandSelection(
-    item: SlashCommandDef,
-    textarea: HTMLTextAreaElement,
-    autoResize: () => void
-  ): void {
-    const val = textarea.value;
-    if (val.startsWith('/') && !val.includes(' ')) {
-      if (ASCII_EMOTES[item.cmd]) {
-        textarea.value = `${ASCII_EMOTES[item.cmd]} `;
-      } else {
-        textarea.value = `${item.cmd} `;
-      }
-    } else {
-      const emote = ASCII_EMOTES[item.cmd] || item.cmd;
-      textarea.value = val.replace(/(\/[a-z0-9]*)$/i, `${emote} `);
-    }
-    autoResize();
+  private applySlashCommandSelection(item: SlashCommandDef, textarea: HTMLTextAreaElement): void {
+    textarea.value = `${item.cmd} `;
+    this.composer.autoResize();
     this.updateSlashMenuDOM(textarea.value);
     textarea.focus();
   }
@@ -1560,15 +1548,13 @@ class RevChatApp {
     const container = this.root.querySelector('#slash-menu-container') as HTMLElement | null;
     if (!container) return;
 
-    const matches = this.getMatchingSlashCommands(rawInput);
+    const matches = getMatchingSlashCommands(rawInput, this.slashMenuDismissed);
     if (matches.length === 0) {
       container.innerHTML = '';
       return;
     }
 
-    if (this.slashMenuIndex >= matches.length) {
-      this.slashMenuIndex = 0;
-    }
+    if (this.slashMenuIndex >= matches.length) this.slashMenuIndex = 0;
 
     container.innerHTML = `
       <div class="slash-menu" id="slash-menu">
@@ -1580,8 +1566,8 @@ class RevChatApp {
           .map(
             (item, idx) => `
           <div class="slash-item ${idx === this.slashMenuIndex ? 'active' : ''}" data-slash-idx="${idx}">
-            <span class="slash-cmd">${this.escapeHtml(item.usage)}</span>
-            <span class="slash-desc">${this.escapeHtml(item.desc)}</span>
+            <span class="slash-cmd">${escapeHtml(item.usage)}</span>
+            <span class="slash-desc">${escapeHtml(item.desc)}</span>
           </div>
         `
           )
@@ -1592,55 +1578,33 @@ class RevChatApp {
     const activeEl = container.querySelector('.slash-item.active') as HTMLElement | null;
     activeEl?.scrollIntoView({ block: 'nearest' });
 
-    const textarea = this.root.querySelector('#composer-input') as HTMLTextAreaElement | null;
+    const textarea = this.composer.getTextarea();
     container.querySelectorAll('[data-slash-idx]').forEach((el) => {
       el.addEventListener('mousedown', (e) => {
         e.preventDefault();
         const idx = Number(el.getAttribute('data-slash-idx') || 0);
         const chosen = matches[idx];
         if (chosen && textarea) {
-          this.applySlashCommandSelection(chosen, textarea, () => {
-            textarea.style.height = 'auto';
-            textarea.style.height = `${Math.min(120, textarea.scrollHeight)}px`;
-          });
+          if (chosen.instant) {
+            textarea.value = '';
+            this.composer.autoResize();
+            this.updateSlashMenuDOM('');
+            this.handleSendMessage(chosen.cmd);
+            textarea.focus();
+          } else {
+            this.applySlashCommandSelection(chosen, textarea);
+          }
         }
       });
     });
   }
 
-  private getMatchingMentions(rawInput: string): Array<{ tag: string; label: string; desc: string }> {
-    if (this.mentionMenuDismissed) return [];
-    if (rawInput.includes('\n')) return [];
-
-    const match = rawInput.match(/(?:^|\s)(@[a-zA-Z0-9_\-\uAC00-\uD7A3]*)$/i);
-    if (!match) return [];
-    const token = match[1].toLowerCase();
-
-    const list: Array<{ tag: string; label: string; desc: string }> = [
-      { tag: '@me', label: `@me (${this.profile.nickname})`, desc: 'Your display nickname' },
-    ];
-
-    for (const peer of this.peers) {
-      if (peer.nickname && !list.some((it) => it.tag.toLowerCase() === `@${peer.nickname.toLowerCase()}`)) {
-        list.push({
-          tag: `@${peer.nickname}`,
-          label: `@${peer.nickname}`,
-          desc: peer.peerId.slice(-6),
-        });
-      }
-    }
-
-    return list.filter((item) => item.tag.toLowerCase().startsWith(token));
-  }
-
   private applyMentionSelection(
     item: { tag: string; label: string; desc: string },
-    textarea: HTMLTextAreaElement,
-    autoResize: () => void
+    textarea: HTMLTextAreaElement
   ): void {
-    const val = textarea.value;
-    textarea.value = val.replace(/(@[a-zA-Z0-9_\-\uAC00-\uD7A3]*)$/i, `${item.tag} `);
-    autoResize();
+    textarea.value = textarea.value.replace(/(@[a-zA-Z0-9_\-\uAC00-\uD7A3]*)$/i, `${item.tag} `);
+    this.composer.autoResize();
     this.updateMentionMenuDOM(textarea.value);
     textarea.focus();
   }
@@ -1649,15 +1613,18 @@ class RevChatApp {
     const container = this.root.querySelector('#mention-menu-container') as HTMLElement | null;
     if (!container) return;
 
-    const matches = this.getMatchingMentions(rawInput);
+    const matches = getMatchingMentions(
+      rawInput,
+      this.profile.nickname,
+      this.peers,
+      this.mentionMenuDismissed
+    );
     if (matches.length === 0) {
       container.innerHTML = '';
       return;
     }
 
-    if (this.mentionMenuIndex >= matches.length) {
-      this.mentionMenuIndex = 0;
-    }
+    if (this.mentionMenuIndex >= matches.length) this.mentionMenuIndex = 0;
 
     container.innerHTML = `
       <div class="slash-menu mention-menu" id="mention-menu">
@@ -1669,8 +1636,8 @@ class RevChatApp {
           .map(
             (item, idx) => `
           <div class="slash-item ${idx === this.mentionMenuIndex ? 'active' : ''}" data-mention-idx="${idx}">
-            <span class="slash-cmd">${this.escapeHtml(item.label)}</span>
-            <span class="slash-desc">${this.escapeHtml(item.desc)}</span>
+            <span class="slash-cmd">${escapeHtml(item.label)}</span>
+            <span class="slash-desc">${escapeHtml(item.desc)}</span>
           </div>
         `
           )
@@ -1681,18 +1648,13 @@ class RevChatApp {
     const activeEl = container.querySelector('.slash-item.active') as HTMLElement | null;
     activeEl?.scrollIntoView({ block: 'nearest' });
 
-    const textarea = this.root.querySelector('#composer-input') as HTMLTextAreaElement | null;
+    const textarea = this.composer.getTextarea();
     container.querySelectorAll('[data-mention-idx]').forEach((el) => {
       el.addEventListener('mousedown', (e) => {
         e.preventDefault();
         const idx = Number(el.getAttribute('data-mention-idx') || 0);
         const chosen = matches[idx];
-        if (chosen && textarea) {
-          this.applyMentionSelection(chosen, textarea, () => {
-            textarea.style.height = 'auto';
-            textarea.style.height = `${Math.min(120, textarea.scrollHeight)}px`;
-          });
-        }
+        if (chosen && textarea) this.applyMentionSelection(chosen, textarea);
       });
     });
   }
@@ -1703,29 +1665,16 @@ class RevChatApp {
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
 
-      const copyBtn = targetEl.closest('[data-copy-peer]');
-      if (copyBtn) {
-        const code = copyBtn.getAttribute('data-copy-peer') || '';
-        if (code) {
-          navigator.clipboard?.writeText(code);
-          this.showToast('Peer code copied!');
-        }
-        return;
-      }
-
       const btn = targetEl.closest('[data-whisper-id]');
       if (!btn) return;
       const peerId = btn.getAttribute('data-whisper-id') || '';
       const nickname = btn.getAttribute('data-whisper-name') || 'peer';
-      if (this.whisperTarget?.peerId === peerId) {
-        this.whisperTarget = undefined;
-      } else {
-        this.whisperTarget = { peerId, nickname };
-      }
+      this.whisperTarget =
+        this.whisperTarget?.peerId === peerId ? undefined : { peerId, nickname };
       this.setMobileDrawerOpen(false);
       this.updatePeersDOM();
       this.updateContextBannerDOM();
-      (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
+      this.composer.getTextarea()?.focus();
     });
   }
 
@@ -1734,6 +1683,81 @@ class RevChatApp {
     stream?.addEventListener('click', (e) => {
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
+
+      if (targetEl.closest('#btn-empty-invite')) {
+        void this.openInviteModal();
+        return;
+      }
+
+      const lightboxImg = targetEl.closest('[data-lightbox-url]');
+      if (lightboxImg) {
+        this.lightboxUrl = lightboxImg.getAttribute('data-lightbox-url') || '';
+        this.lightboxName = lightboxImg.getAttribute('data-lightbox-name') || 'image';
+        this.activeModal = 'lightbox';
+        this.renderModal();
+        return;
+      }
+
+      const cancelTransferBtn = targetEl.closest('[data-cancel-transfer]');
+      if (cancelTransferBtn) {
+        const tid = cancelTransferBtn.getAttribute('data-cancel-transfer') || '';
+        if (tid) this.engine.cancelMediaTransfer(tid);
+        return;
+      }
+
+      const retryBtn = targetEl.closest('[data-retry-id]');
+      if (retryBtn) {
+        const id = retryBtn.getAttribute('data-retry-id') || '';
+        const target = this.messageMap.get(id);
+        if (target) {
+          target.deliveryState = 'sent';
+          this.rerenderSingleMessageRow(id);
+          void this.engine.retryChatMessage(target);
+        }
+        return;
+      }
+
+      const deleteBtn = targetEl.closest('[data-delete-id]');
+      if (deleteBtn) {
+        const id = deleteBtn.getAttribute('data-delete-id') || '';
+        const idx = this.messages.findIndex((m) => m.id === id);
+        const target = idx >= 0 ? this.messages[idx] : this.messageMap.get(id);
+        if (target) {
+          target.deleted = true;
+          target.text = '';
+          if (target.attachment?.url) this.blobs.revoke(target.attachment.url);
+          target.attachment = undefined;
+          this.rerenderSingleMessageRow(id);
+          if (idx >= 0 && this.messages[idx + 1]) {
+            this.rerenderSingleMessageRow(this.messages[idx + 1].id);
+          }
+          void this.engine.deleteMessage(id);
+        }
+        return;
+      }
+
+      const reactOpenBtn = targetEl.closest('[data-react-open]');
+      if (reactOpenBtn) {
+        const id = reactOpenBtn.getAttribute('data-react-open') || '';
+        const slot = stream.querySelector(`[data-react-slot="${id}"]`);
+        if (slot) {
+          slot.innerHTML = slot.innerHTML ? '' : renderReactionPickerHtml(id);
+        }
+        return;
+      }
+
+      const reactBtn = targetEl.closest('[data-react-id]');
+      if (reactBtn) {
+        const id = reactBtn.getAttribute('data-react-id') || '';
+        const emoji = reactBtn.getAttribute('data-react-emoji') || '';
+        if (id && emoji) {
+          const slot = stream.querySelector(`[data-react-slot="${id}"]`);
+          if (slot) slot.innerHTML = '';
+          this.applyReactionLocally(id, emoji, this.engine.getMyPeerId());
+          void this.engine.sendReaction(id, emoji);
+        }
+        return;
+      }
 
       const copyBtn = targetEl.closest('[data-copy-id]');
       if (copyBtn) {
@@ -1753,7 +1777,7 @@ class RevChatApp {
         const text = replyBtn.getAttribute('data-reply-text') || '';
         this.replyTo = { id, senderName, text };
         this.updateContextBannerDOM();
-        (this.root.querySelector('#composer-input') as HTMLTextAreaElement | null)?.focus();
+        this.composer.getTextarea()?.focus();
       }
     });
   }
@@ -1770,28 +1794,17 @@ class RevChatApp {
     layout.addEventListener(
       'touchstart',
       (e: TouchEvent) => {
-        if (window.innerWidth > 768) {
+        if (window.innerWidth > 768 || e.touches.length !== 1 || this.activeModal !== 'none') {
           validTouch = false;
           return;
         }
-
-        if (e.touches.length !== 1) {
-          validTouch = false;
-          return;
-        }
-
-        if (this.activeModal !== 'none') {
-          validTouch = false;
-          return;
-        }
-
         const target = e.target as HTMLElement | null;
-        if (!target) {
-          validTouch = false;
-          return;
-        }
-
-        if (target.closest('button, input, textarea, a, select, pre, code')) {
+        if (
+          !target ||
+          target.closest(
+            'button, input, textarea, a, select, pre, code, video, audio, .composer-popover, .call-dock'
+          )
+        ) {
           validTouch = false;
           return;
         }
@@ -1836,7 +1849,6 @@ class RevChatApp {
         if (elapsed > 500 || absX < absY * 1.5) return;
 
         const threshold = Math.max(45, window.innerWidth * 0.15);
-
         if (!this.mobileDrawerOpen && deltaX > threshold) {
           this.setMobileDrawerOpen(true);
         } else if (this.mobileDrawerOpen && deltaX < -threshold) {
@@ -1846,41 +1858,15 @@ class RevChatApp {
       { passive: true }
     );
   }
-
-  // =========================================================================
-  // FORMATTING HELPERS
-  // =========================================================================
-  private formatMessageBody(raw: string): string {
-    let safe = this.escapeHtml(raw);
-    safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-    safe = safe.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-    safe = safe.replace(
-      /\b(https?:\/\/[a-zA-Z0-9._~:/?#\[\]@!$'()*+,;=%-]+)\b/g,
-      '<a href="$1" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">$1</a>'
-    );
-    safe = safe.replace(
-      /(^|\s)(@[a-zA-Z0-9_\-\uAC00-\uD7A3]+)/g,
-      '$1<span class="chat-mention">$2</span>'
-    );
-    return safe;
-  }
-
-  private escapeHtml(str: string): string {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  private escapeAttr(str: string): string {
-    return this.escapeHtml(str);
-  }
 }
 
 const appRoot = document.getElementById('app');
 if (appRoot) {
   new RevChatApp(appRoot);
+}
+
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
 }

@@ -1,6 +1,22 @@
-export type ConnectionTransport = 'peerjs-mesh' | 'local-broadcast';
+export type ConnectionTransport = 'trystero-mesh' | 'local-broadcast';
 
 export type PeerConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+
+export type IceRouteType = 'direct' | 'relay' | 'local' | 'unknown';
+
+export type MediaKind = 'image' | 'video' | 'audio' | 'file';
+
+export interface MediaAttachment {
+  transferId: string;
+  kind: MediaKind;
+  name: string;
+  mimeType: string;
+  size: number;
+  url?: string;
+  durationSec?: number;
+  progress?: number;
+  status: 'sending' | 'receiving' | 'ready' | 'error' | 'canceled';
+}
 
 export interface PeerInfo {
   peerId: string;
@@ -8,7 +24,12 @@ export interface PeerInfo {
   transport: ConnectionTransport;
   state: PeerConnectionState;
   rttMs: number | null;
-  isRoomBeaconHolder?: boolean;
+  iceRoute: IceRouteType;
+  signPubKey?: string;
+  ecdhPubKey?: string;
+  inCall?: boolean;
+  hasVideo?: boolean;
+  isScreenShare?: boolean;
   connectedAt: number;
   lastSeenAt: number;
 }
@@ -29,18 +50,27 @@ export interface ChatMessage {
   targetPeerName?: string;
   system?: boolean;
   ackedBy: string[];
+  encrypted?: boolean;
+  verified?: boolean;
+  attachment?: MediaAttachment;
+  reactions?: Record<string, string[]>;
+  deleted?: boolean;
+  deliveryState?: 'sending' | 'sent' | 'delivered' | 'failed';
 }
 
 export type PacketType =
   | 'HELLO'
-  | 'PEER_LIST'
   | 'CHAT_MSG'
   | 'CHAT_ACK'
   | 'TYPING'
   | 'PING'
   | 'PONG'
   | 'NICK_CHANGE'
-  | 'LEAVE';
+  | 'LEAVE'
+  | 'REACTION'
+  | 'DELETE_MSG'
+  | 'MEDIA_CANCEL'
+  | 'CALL_STATE';
 
 export interface P2PPacket {
   packetId: string;
@@ -51,18 +81,28 @@ export interface P2PPacket {
   timestamp: number;
   ttl: number;
   payload: any;
+  sig?: string;
+  enc?: boolean;
 }
 
 export interface UserProfile {
   clientId: string;
   nickname: string;
   theme: 'light' | 'dark' | 'auto';
+  fontSize: number;
+  soundMuted: boolean;
 }
 
 export interface SignalingState {
   status: 'initializing' | 'ready' | 'offline' | 'error';
   myPeerId: string;
   roomId: string;
-  isBeaconHost: boolean;
-  errorMessage?: string;
+}
+
+export interface RemoteCallStream {
+  peerId: string;
+  nickname: string;
+  stream: MediaStream;
+  hasVideo: boolean;
+  isScreenShare?: boolean;
 }
