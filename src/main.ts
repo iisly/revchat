@@ -862,9 +862,9 @@ class RevChatApp {
           <!-- Sidebar Footer Toolbar -->
           <div class="side-toolbar">
             <div class="size-group" role="group" aria-label="Chat text size">
-              <button type="button" class="small size-step-btn" id="btn-size-dec" title="Decrease text size" aria-label="Decrease text size" ${this.fontSizePx <= MIN_FONT_SIZE ? 'disabled' : ''}>A-</button>
+              <button type="button" class="small size-step-btn" id="btn-size-dec" title="Decrease text size" aria-label="Decrease text size" ${this.fontSizePx <= MIN_FONT_SIZE ? 'disabled' : ''}>-</button>
               <button type="button" class="small size-readout" id="btn-size-reset" title="Reset text size (${DEFAULT_FONT_SIZE}px)" aria-label="Reset text size">${this.fontSizePx}px</button>
-              <button type="button" class="small size-step-btn" id="btn-size-inc" title="Increase text size" aria-label="Increase text size" ${this.fontSizePx >= MAX_FONT_SIZE ? 'disabled' : ''}>A+</button>
+              <button type="button" class="small size-step-btn" id="btn-size-inc" title="Increase text size" aria-label="Increase text size" ${this.fontSizePx >= MAX_FONT_SIZE ? 'disabled' : ''}>+</button>
             </div>
             <div class="tool-group">
               <button

@@ -173,7 +173,7 @@ body {
 }
 
 .size-step-btn {
-  min-width: 32px;
+  min-width: 28px;
   font-weight: 700;
 }
 
@@ -397,7 +397,6 @@ button.icon-btn.muted {
   overflow: hidden;
   background: var(--bg);
   position: relative;
-  font-size: var(--msg-font-size, 14px);
 }
 
 .chat-topbar {
@@ -453,6 +452,7 @@ button.icon-btn.muted {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  font-size: var(--msg-font-size, 14px);
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
@@ -741,10 +741,12 @@ button.icon-btn.muted {
 
 .composer textarea {
   resize: none;
+  height: 38px;
   min-height: 38px;
   max-height: 120px;
+  overflow-y: hidden;
   font-family: var(--font-sans);
-  font-size: max(16px, 0.95em); /* Prevents iOS zoom on focus & scales with L */
+  font-size: 16px;
   line-height: 1.35;
   padding: 7px 10px;
 }

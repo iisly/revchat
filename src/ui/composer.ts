@@ -83,8 +83,14 @@ export class ComposerController {
   public autoResize(): void {
     const ta = this.getTextarea();
     if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(120, ta.scrollHeight)}px`;
+    ta.style.height = '38px';
+    if (!ta.value) {
+      ta.style.overflowY = 'hidden';
+      return;
+    }
+    const nextHeight = Math.min(120, Math.max(38, ta.scrollHeight));
+    ta.style.height = `${nextHeight}px`;
+    ta.style.overflowY = ta.scrollHeight > 120 ? 'auto' : 'hidden';
   }
 
   public renderHtml(): string {
