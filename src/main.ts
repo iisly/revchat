@@ -831,10 +831,10 @@ class RevChatApp {
         <div class="drawer-backdrop" id="drawer-backdrop" style="display:${this.mobileDrawerOpen ? 'block' : 'none'};"></div>
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
-            <div class="brand" id="brand-logo">
+            <a href="./" class="brand" id="brand-logo" title="revchat">
               <img src="./favicon.svg" class="brand-logo" width="22" height="22" alt="" />
               <span class="brand-name">revchat</span>
-            </div>
+            </a>
             <div class="sidebar-header-right">
               <span class="sig-status" title="Network status">
                 <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
@@ -1277,6 +1277,12 @@ class RevChatApp {
   // EVENT BINDINGS
   // =========================================================================
   private bindEvents(): void {
+    this.root.querySelector('#brand-logo')?.addEventListener('click', (e) => {
+      const me = e as MouseEvent;
+      if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
+      e.preventDefault();
+      window.location.reload();
+    });
     this.root.querySelector('#btn-open-drawer')?.addEventListener('click', () => {
       this.setMobileDrawerOpen(true);
     });

@@ -196,30 +196,16 @@ export function renderSingleMessageHtml(
       ${m.text ? `<div class="msg-body">${formatMessageBody(m.text, ctx.myNickname)}</div>` : ''}
     `;
 
-  if (grouped) {
-    return `
-      <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''} grouped" data-msg-id="${escapeAttr(m.id)}">
-        <div class="msg-grouped-meta">
-          <span class="msg-time grouped-time">${timeStr}</span>
-          ${actionButtons}
-        </div>
-        ${bodyContent}
-        ${statusHtml ? `<div class="msg-grouped-status">${statusHtml}</div>` : ''}
-        ${!m.deleted ? renderReactionsHtml(m, ctx.myPeerId) : ''}
-        <div class="reaction-picker-slot" data-react-slot="${escapeAttr(m.id)}"></div>
-      </div>
-    `;
-  }
-
   return `
-    <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''}" data-msg-id="${escapeAttr(m.id)}">
-      <div class="msg-header">
-        <div class="msg-header-left">
-          <span class="msg-author ${isSelf ? 'self' : ''}">${escapeHtml(m.senderName)}</span>
-          <span class="msg-time">${timeStr}</span>
-        </div>
-        <div class="msg-meta-right">${statusHtml}${actionButtons}</div>
-      </div>
+    <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''} ${grouped ? 'grouped' : ''}" data-msg-id="${escapeAttr(m.id)}">
+      ${
+        grouped
+          ? ''
+          : `<div class="msg-header">
+        <span class="msg-author ${isSelf ? 'self' : ''}">${escapeHtml(m.senderName)}</span>
+        <span class="msg-time">${timeStr}</span>
+      </div>`
+      }
       ${
         m.targetPeerId
           ? `<div class="msg-whisper-line">DM → ${escapeHtml(m.targetPeerName || 'peer')}</div>`
@@ -230,7 +216,13 @@ export function renderSingleMessageHtml(
           ? `<div class="msg-quote">@${escapeHtml(m.replyTo.senderName)}: ${escapeHtml(m.replyTo.text)}</div>`
           : ''
       }
+      ${
+        actionButtons
+          ? `<div class="msg-toolbar">${grouped ? `<span class="msg-time">${timeStr}</span>` : ''}${actionButtons}</div>`
+          : ''
+      }
       ${bodyContent}
+      ${statusHtml ? `<div class="msg-status">${statusHtml}</div>` : ''}
       ${!m.deleted ? renderReactionsHtml(m, ctx.myPeerId) : ''}
       <div class="reaction-picker-slot" data-react-slot="${escapeAttr(m.id)}"></div>
     </div>

@@ -131,7 +131,7 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 15px;
-  cursor: default;
+  cursor: pointer;
   color: inherit;
   text-decoration: none;
   user-select: none;
@@ -465,7 +465,7 @@ button.icon-btn.muted {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 10px 12px;
+  padding: 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -522,7 +522,7 @@ button.icon-btn.muted {
   display: flex;
   flex-direction: column;
   margin-top: 6px;
-  padding: 5px 10px;
+  padding: 5px 10px 4px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   word-break: break-word;
@@ -582,18 +582,10 @@ button.icon-btn.muted {
 .msg-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
   font-family: var(--font-mono);
   font-size: 0.82em;
   margin-bottom: 4px;
-}
-
-.msg-header-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
 }
 
 .msg-author {
@@ -618,12 +610,6 @@ button.icon-btn.muted {
 .msg-time {
   color: var(--fg-muted);
   font-size: 0.9em;
-}
-
-.msg-meta-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .msg-ack {
@@ -1178,7 +1164,7 @@ button.danger:hover {
 .msg-row:has(+ .msg-row.grouped) {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
-  padding-bottom: 3px;
+  padding-bottom: 4px;
 }
 
 .msg-row.grouped {
@@ -1192,7 +1178,7 @@ button.danger:hover {
 .msg-row.grouped:has(+ .msg-row.grouped) {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 
 .msg-actions {
@@ -1201,7 +1187,7 @@ button.danger:hover {
   gap: 2px;
 }
 
-.msg-grouped-meta {
+.msg-toolbar {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1209,7 +1195,7 @@ button.danger:hover {
   font-size: 0.78em;
 }
 
-.msg-grouped-status {
+.msg-status {
   font-family: var(--font-mono);
   font-size: 0.75em;
   line-height: 1;
@@ -1217,21 +1203,11 @@ button.danger:hover {
 }
 
 @media (hover: hover) {
-  .msg-actions {
-    opacity: 0;
-    transition: opacity 0.12s;
-  }
-
-  .msg-row:hover .msg-actions,
-  .msg-row:focus-within .msg-actions {
-    opacity: 1;
-  }
-
-  .msg-grouped-meta {
+  .msg-toolbar {
     display: none;
     position: absolute;
     top: -10px;
-    right: 8px;
+    right: 10px;
     z-index: 3;
     border-radius: var(--radius-sm);
     background: var(--bg-alt);
@@ -1240,29 +1216,29 @@ button.danger:hover {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
   }
 
-  .msg-grouped-meta .msg-actions {
+  .msg-toolbar .msg-actions {
     opacity: 1;
   }
 
-  .msg-row.grouped:hover .msg-grouped-meta,
-  .msg-row.grouped:focus-within .msg-grouped-meta {
+  .msg-row:hover .msg-toolbar,
+  .msg-row:focus-within .msg-toolbar {
     display: inline-flex;
   }
 
-  .msg-grouped-status {
+  .msg-status {
     position: absolute;
-    bottom: 3px;
-    right: 8px;
+    bottom: 6px;
+    right: 10px;
     z-index: 1;
   }
 
-  .msg-row.self.grouped .msg-body {
-    padding-right: 26px;
+  .msg-row.self .msg-body {
+    padding-right: 36px;
   }
 }
 
 @media (hover: none) {
-  .msg-grouped-meta {
+  .msg-toolbar {
     order: 10;
     display: flex;
     align-items: center;
@@ -1273,13 +1249,13 @@ button.danger:hover {
     font-size: 0.78em;
   }
 
-  .msg-grouped-meta .grouped-time {
+  .msg-toolbar .msg-time {
     margin-right: auto;
     opacity: 0.65;
   }
 
-  .msg-grouped-status {
-    order: 10;
+  .msg-status {
+    order: 9;
     margin-top: 2px;
   }
 
