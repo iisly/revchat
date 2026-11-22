@@ -70,16 +70,13 @@ export function parseFontSizeInput(
       error: `Text size: ${currentPx}px. Usage: /size <${MIN_FONT_SIZE}-${MAX_FONT_SIZE}|+|-|reset>`,
     };
   }
-  if (arg === 'reset' || arg === 'default') return { px: DEFAULT_FONT_SIZE };
-  if (arg === '+' || arg === 'up' || arg === 'larger') {
+  if (arg === 'reset') return { px: DEFAULT_FONT_SIZE };
+  if (arg === '+') {
     return { px: clampFontSize(currentPx + FONT_SIZE_STEP) };
   }
-  if (arg === '-' || arg === 'down' || arg === 'smaller') {
+  if (arg === '-') {
     return { px: clampFontSize(currentPx - FONT_SIZE_STEP) };
   }
-  if (arg === 's' || arg === 'small') return { px: 14 };
-  if (arg === 'm' || arg === 'medium') return { px: 16 };
-  if (arg === 'l' || arg === 'large') return { px: 20 };
   const match = arg.match(/^(\d+)(?:px)?$/);
   if (match) {
     const n = parseInt(match[1], 10);
@@ -173,7 +170,7 @@ export function runDiceRoll(_nick: string, argStr = ''): GameCommandResult {
     max = Math.min(1_000_000, parsed);
   }
   const val = Math.floor(Math.random() * max) + 1;
-  return { text: `🎲 DICE d${max} · ${val}` };
+  return { text: `🎲 DICE 1-${max} · ${val}` };
 }
 
 export function runPick(_nick: string, argStr: string): GameCommandResult {

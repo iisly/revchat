@@ -198,11 +198,9 @@ export function parseDelimitedTable(
 }
 
 export async function readBlobPreviewText(
-  url: string,
+  blob: Blob,
   maxBytes = MAX_TEXT_PREVIEW_BYTES
 ): Promise<{ text: string; truncated: boolean; isBinary: boolean }> {
-  const res = await fetch(url);
-  const blob = await res.blob();
   const truncated = blob.size > maxBytes;
   const slice = truncated ? blob.slice(0, maxBytes) : blob;
   const text = await slice.text();
@@ -443,24 +441,28 @@ export class VoiceRecorder {
 }
 
 export class BlobUrlRegistry {
-  private urls = new Set<string>();
+  private entries = new Map<string, Blob>();
 
   public create(blob: Blob): string {
     const url = URL.createObjectURL(blob);
-    this.urls.add(url);
+    this.entries.set(url, blob);
     return url;
   }
 
+  public get(url?: string): Blob | undefined {
+    return url ? this.entries.get(url) : undefined;
+  }
+
   public revoke(url?: string): void {
-    if (!url || !this.urls.has(url)) return;
+    if (!url || !this.entries.has(url)) return;
     URL.revokeObjectURL(url);
-    this.urls.delete(url);
+    this.entries.delete(url);
   }
 
   public revokeAll(): void {
-    for (const url of this.urls) {
+    for (const url of this.entries.keys()) {
       URL.revokeObjectURL(url);
     }
-    this.urls.clear();
+    this.entries.clear();
   }
 }

@@ -61,8 +61,9 @@ describe('commands module', () => {
     expect(runCoinFlip('Bob').text).toMatch(/^🪙 COIN · (HEADS|TAILS)$/);
     expect(runCoinFlip('Bob', 'extra').error).toBe('Usage: /coin');
 
-    expect(runDiceRoll('Bob').text).toMatch(/^🎲 DICE d6 · [1-6]$/);
-    expect(runDiceRoll('Bob', '100').text).toMatch(/^🎲 DICE d100 · \d+$/);
+    expect(runDiceRoll('Bob').text).toMatch(/^🎲 DICE 1-6 · [1-6]$/);
+    expect(runDiceRoll('Bob', '10').text).toMatch(/^🎲 DICE 1-10 · \d+$/);
+    expect(runDiceRoll('Bob', '100').text).toMatch(/^🎲 DICE 1-100 · \d+$/);
     expect(runDiceRoll('Bob', '1').error).toBe('Usage: /roll [max]');
     expect(runDiceRoll('Bob', 'abc').error).toBe('Usage: /roll [max]');
 
@@ -89,11 +90,9 @@ describe('commands module', () => {
     expect(parseFontSizeInput('+', 14)).toEqual({ px: 16 });
     expect(parseFontSizeInput('-', 14)).toEqual({ px: 12 });
     expect(parseFontSizeInput('reset', 20)).toEqual({ px: DEFAULT_FONT_SIZE });
-    expect(parseFontSizeInput('s', 18)).toEqual({ px: 14 });
-    expect(parseFontSizeInput('m', 14)).toEqual({ px: 16 });
-    expect(parseFontSizeInput('l', 14)).toEqual({ px: 20 });
 
     expect(parseFontSizeInput('', 16).error).toContain('Text size: 16px.');
+    expect(parseFontSizeInput('s', 18).error).toBe('Usage: /size <12-22|+|-|reset>');
     expect(parseFontSizeInput('99', 14).error).toBe('Usage: /size <12-22|+|-|reset>');
     expect(parseFontSizeInput('xl', 14).error).toBe('Usage: /size <12-22|+|-|reset>');
   });

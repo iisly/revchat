@@ -78,10 +78,9 @@ export class NotificationManager {
 
   public unlockAudio(): void {
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
+      if (typeof AudioContext === 'undefined') return;
       if (!this.audioCtx) {
-        this.audioCtx = new AudioCtx();
+        this.audioCtx = new AudioContext();
       }
       if (this.audioCtx.state === 'suspended') {
         void this.audioCtx.resume();
@@ -94,10 +93,9 @@ export class NotificationManager {
   public playChime(): void {
     if (this.soundMuted) return;
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
+      if (typeof AudioContext === 'undefined') return;
       if (!this.audioCtx) {
-        this.audioCtx = new AudioCtx();
+        this.audioCtx = new AudioContext();
       }
       const ctx = this.audioCtx;
       if (ctx.state === 'suspended') {

@@ -347,9 +347,9 @@ export class ComposerController {
               <div class="game-card">
                 <div class="game-card-head">🎲 DICE</div>
                 <div class="game-seg-row">
-                  <button type="button" class="small" data-cmd="/roll 6">d6</button>
-                  <button type="button" class="small" data-cmd="/roll 20">d20</button>
-                  <button type="button" class="small" data-cmd="/roll 100">d100</button>
+                  <button type="button" class="small" data-cmd="/roll 6">1–6</button>
+                  <button type="button" class="small" data-cmd="/roll 10">1–10</button>
+                  <button type="button" class="small" data-cmd="/roll 100">1–100</button>
                 </div>
               </div>
               <div class="game-card">
@@ -366,14 +366,14 @@ export class ComposerController {
               <div class="game-card">
                 <div class="game-card-head">🎯 PICK</div>
                 <div class="game-input-row">
-                  <input type="text" id="game-pick-input" placeholder="Pizza, Sushi, Ramen" autocomplete="off" />
+                  <input type="text" id="game-pick-input" placeholder="Option A, Option B, ..." autocomplete="off" />
                   <button type="button" class="small primary" id="btn-game-pick-go">GO</button>
                 </div>
               </div>
               <div class="game-card">
                 <div class="game-card-head">🎱 8-BALL</div>
                 <div class="game-input-row">
-                  <input type="text" id="game-8ball-input" placeholder="Ask a yes/no question..." autocomplete="off" />
+                  <input type="text" id="game-8ball-input" placeholder="Ask a question..." autocomplete="off" />
                   <button type="button" class="small primary" id="btn-game-8ball-go">ASK</button>
                 </div>
               </div>

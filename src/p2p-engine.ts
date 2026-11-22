@@ -1606,7 +1606,7 @@ export class P2PEngine {
           video: { facingMode: { exact: nextFacing } },
         });
       } catch {
-        // Fallback to enumerateDevices or ideal facingMode
+        // Fallback to enumerateDevices when exact facingMode is unavailable
       }
       try {
         const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
@@ -1624,15 +1624,29 @@ export class P2PEngine {
           });
         }
       } catch {
-        // Fallback to non-exact facingMode
+        // Device enumeration unavailable or denied
       }
-      try {
-        return await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: nextFacing },
-        });
-      } catch {
-        return null;
+      return null;
+    };
+
+    const publishVideoTrack = async (prevTrack: MediaStreamTrack, nextTrack: MediaStreamTrack) => {
+      if (!this.localCallStream) return;
+      this.localCallStream.addTrack(nextTrack);
+      if (this.room) {
+        try {
+          await this.room.replaceTrack(prevTrack, nextTrack);
+        } catch {
+          await this.room.addStream(this.localCallStream, {
+            metadata: { hasVideo: true, isScreenShare: false },
+          });
+        }
       }
+      this.callbacks.onLocalStreamUpdated(
+        this.localCallStream,
+        this.localHasVideo,
+        this.localAudioMuted,
+        false
+      );
     };
 
     const nextStream = await tryAcquireNext();
@@ -1649,25 +1663,8 @@ export class P2PEngine {
               : { facingMode: currentFacing },
           });
           const recTrack = rec.getVideoTracks()[0];
-          if (recTrack && this.localCallStream) {
-            this.localCallStream.addTrack(recTrack);
-            if (this.room) {
-              try {
-                await this.room.replaceTrack(oldTrack, recTrack);
-              } catch {
-                await this.room
-                  .addStream(this.localCallStream, {
-                    metadata: { hasVideo: true, isScreenShare: false },
-                  })
-                  .catch(() => {});
-              }
-            }
-            this.callbacks.onLocalStreamUpdated(
-              this.localCallStream,
-              this.localHasVideo,
-              this.localAudioMuted,
-              false
-            );
+          if (recTrack) {
+            await publishVideoTrack(oldTrack, recTrack);
           }
         } catch {
           // ignore recovery failure
@@ -1679,23 +1676,7 @@ export class P2PEngine {
     const newFacing = newTrack.getSettings?.().facingMode;
     this.cameraFacingMode =
       newFacing === 'environment' || newFacing === 'user' ? newFacing : nextFacing;
-    this.localCallStream.addTrack(newTrack);
-
-    if (this.room) {
-      try {
-        await this.room.replaceTrack(oldTrack, newTrack);
-      } catch {
-        await this.room.addStream(this.localCallStream, {
-          metadata: { hasVideo: true, isScreenShare: false },
-        });
-      }
-    }
-    this.callbacks.onLocalStreamUpdated(
-      this.localCallStream,
-      this.localHasVideo,
-      this.localAudioMuted,
-      false
-    );
+    await publishVideoTrack(oldTrack, newTrack);
   }
 
   public async toggleScreenShare(): Promise<boolean> {
@@ -1737,8 +1718,7 @@ export class P2PEngine {
 
       if (dispAudioTrack) {
         try {
-          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-          const ctx: AudioContext = new AudioCtx();
+          const ctx = new AudioContext();
           if (ctx.state === 'suspended') {
             await ctx.resume();
           }

@@ -1,12 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  BlobUrlRegistry,
   classifyFilePreview,
   classifyMime,
   inferMimeFromFilename,
   parseDelimitedTable,
+  readBlobPreviewText,
 } from '../src/media';
 
 describe('media classification and file preview helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   it('infers MIME types cleanly from common filenames and extensions', () => {
     expect(inferMimeFromFilename('photo.JPG')).toBe('image/jpeg');
     expect(inferMimeFromFilename('iphone.heic')).toBe('image/heic');
@@ -53,5 +58,37 @@ describe('media classification and file preview helpers', () => {
       ['a', 'b'],
       ['1', '2'],
     ]);
+  });
+
+  it('reads Blob text previews without fetch and maps URLs via BlobUrlRegistry', async () => {
+    const createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-1');
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('fetch should not be called'));
+
+    const registry = new BlobUrlRegistry();
+    const plain = new Blob(['hello revchat'], { type: 'text/plain' });
+    const url = registry.create(plain);
+    expect(createSpy).toHaveBeenCalledWith(plain);
+    expect(registry.get(url)).toBe(plain);
+
+    await expect(readBlobPreviewText(registry.get(url)!, 5)).resolves.toEqual({
+      text: 'hello',
+      truncated: true,
+      isBinary: false,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    registry.revoke(url);
+    expect(revokeSpy).toHaveBeenCalledWith(url);
+    expect(registry.get(url)).toBeUndefined();
+
+    const binary = new Blob([new Uint8Array([65, 66, 0, 67])], {
+      type: 'application/octet-stream',
+    });
+    const binRes = await readBlobPreviewText(binary);
+    expect(binRes.isBinary).toBe(true);
+    expect(binRes.truncated).toBe(false);
   });
 });

@@ -173,8 +173,8 @@ function renderGameResultHtml(text: string): string | null {
   let m = text.match(/^🪙 COIN · (HEADS|TAILS)$/);
   if (m) return renderGameCardHtml('🪙', 'COIN', m[1]);
 
-  m = text.match(/^🎲 DICE (d\d+) · (\d+)$/);
-  if (m) return renderGameCardHtml('🎲', m[1], m[2]);
+  m = text.match(/^🎲 DICE 1-(\d+) · (\d+)$/);
+  if (m) return renderGameCardHtml('🎲', `1-${m[1]}`, m[2]);
 
   m = text.match(/^🎲 RPS · (✊|✋|✌️) (ROCK|PAPER|SCISSORS)$/);
   if (m) return renderGameCardHtml(m[1], 'RPS', m[2], 'RANDOM');

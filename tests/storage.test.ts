@@ -22,20 +22,16 @@ describe('storage & URL routing module', () => {
     expect(normalizeRoomId('---')).toBe('LOBBY');
   });
 
-  it('builds URL with hash fragment and strips legacy query parameters', () => {
-    const url = buildRoomUrl('https://iisly.github.io/revchat/?room=OLD&peer=XYZ', 'room-777');
-    expect(url).not.toContain('?room=');
-    expect(url).not.toContain('peer=');
-    expect(url).not.toContain('&k=');
-    expect(url).toContain('#room=ROOM-777');
-
+  it('builds URL with #room hash fragment and reads hash-only routes', () => {
+    const url = buildRoomUrl('https://iisly.github.io/revchat/', 'room-777');
+    expect(url).toBe('https://iisly.github.io/revchat/#room=ROOM-777');
     expect(parseRoomFromUrl(url)).toBe('ROOM-777');
   });
 
-  it('parses bare hashes, legacy query/key URLs, and defaults to LOBBY', () => {
-    expect(parseRoomFromUrl('https://iisly.github.io/revchat/?room=devchat')).toBe('DEVCHAT');
+  it('parses bare hashes and defaults query-only or root URLs to LOBBY', () => {
     expect(parseRoomFromUrl('https://iisly.github.io/revchat/#dev-room')).toBe('DEV-ROOM');
     expect(parseRoomFromUrl('https://iisly.github.io/revchat/#room=TEST&k=oldkey')).toBe('TEST');
+    expect(parseRoomFromUrl('https://iisly.github.io/revchat/?room=devchat')).toBe('LOBBY');
     expect(parseRoomFromUrl('https://iisly.github.io/revchat/')).toBe('LOBBY');
   });
 

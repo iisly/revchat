@@ -36,9 +36,7 @@ export function normalizeRoomId(input: string): string {
 }
 
 /**
- * Parses roomId from URL.
- * Prefers URL Hash Fragment (#room=... or #ROOM) which browsers never send in HTTP requests.
- * Falls back to legacy ?room=... query string for compatibility.
+ * Parses roomId from URL hash fragment (#room=... or #ROOM), defaulting to LOBBY.
  */
 export function parseRoomFromUrl(href: string): string {
   try {
@@ -46,19 +44,13 @@ export function parseRoomFromUrl(href: string): string {
     const hashRaw = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
     if (hashRaw) {
       if (hashRaw.includes('=')) {
-        const hashParams = new URLSearchParams(hashRaw);
-        const rawRoom = hashParams.get('room');
+        const rawRoom = new URLSearchParams(hashRaw).get('room');
         if (rawRoom) {
           return normalizeRoomId(rawRoom);
         }
       } else {
         return normalizeRoomId(decodeURIComponent(hashRaw));
       }
-    }
-
-    const fromQuery = url.searchParams.get('room');
-    if (fromQuery) {
-      return normalizeRoomId(fromQuery);
     }
   } catch {
     // ignore malformed URL
@@ -73,11 +65,7 @@ export function buildRoomUrl(baseHref: string, roomId: string): string {
   const normalized = normalizeRoomId(roomId);
   try {
     const url = new URL(baseHref);
-    url.searchParams.delete('room');
-    url.searchParams.delete('peer');
-    const hashParams = new URLSearchParams();
-    hashParams.set('room', normalized);
-    url.hash = `#${hashParams.toString()}`;
+    url.hash = `#room=${encodeURIComponent(normalized)}`;
     return url.toString();
   } catch {
     return `#room=${encodeURIComponent(normalized)}`;

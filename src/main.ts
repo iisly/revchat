@@ -1330,8 +1330,14 @@ class RevChatApp {
       return;
     }
 
+    const blob = this.blobs.get(att.url);
+    if (!blob) {
+      this.showToast('Could not preview file');
+      return;
+    }
+
     try {
-      const { text, truncated, isBinary } = await readBlobPreviewText(att.url);
+      const { text, truncated, isBinary } = await readBlobPreviewText(blob);
       const delimiter: ',' | '\t' =
         att.name.toLowerCase().endsWith('.tsv') || att.mimeType === 'text/tab-separated-values'
           ? '\t'
