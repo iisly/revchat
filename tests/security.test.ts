@@ -29,7 +29,6 @@ describe('security module', () => {
       senderId: 'revchat-p-abc',
       senderName: 'Alice',
       timestamp: Date.now(),
-      ttl: 1,
       payload: { messageId: 'm1', emoji: '👍' },
       sig: 'abc123',
       enc: true,

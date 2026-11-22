@@ -1,7 +1,5 @@
 export type ConnectionTransport = 'trystero-mesh' | 'local-broadcast';
 
-export type IceRouteType = 'direct' | 'relay' | 'local' | 'unknown';
-
 export type MediaKind = 'image' | 'video' | 'audio' | 'file';
 
 export interface MediaAttachment {
@@ -11,7 +9,6 @@ export interface MediaAttachment {
   mimeType: string;
   size: number;
   url?: string;
-  durationSec?: number;
   progress?: number;
   status: 'sending' | 'receiving' | 'ready' | 'error' | 'canceled';
 }
@@ -21,7 +18,6 @@ export interface PeerInfo {
   nickname: string;
   transport: ConnectionTransport;
   rttMs: number | null;
-  iceRoute: IceRouteType;
   signPubKey?: string;
   ecdhPubKey?: string;
   inCall?: boolean;
@@ -46,8 +42,6 @@ export interface ChatMessage {
   targetPeerName?: string;
   system?: boolean;
   ackedBy: string[];
-  encrypted?: boolean;
-  verified?: boolean;
   attachment?: MediaAttachment;
   reactions?: Record<string, string[]>;
   deleted?: boolean;
@@ -75,7 +69,6 @@ export interface P2PPacket {
   senderId: string;
   senderName: string;
   timestamp: number;
-  ttl: number;
   payload: any;
   sig?: string;
   enc?: boolean;
@@ -90,9 +83,7 @@ export interface UserProfile {
 }
 
 export interface SignalingState {
-  status: 'initializing' | 'ready' | 'offline' | 'error';
-  myPeerId: string;
-  roomId: string;
+  status: 'initializing' | 'ready' | 'offline';
 }
 
 export interface RemoteCallStream {

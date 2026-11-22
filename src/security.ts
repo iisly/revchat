@@ -2,11 +2,11 @@ import { ChatMessage, MediaAttachment, MediaKind, P2PPacket, PacketType } from '
 
 export const MAX_MESSAGE_TEXT_LENGTH = 4_000;
 export const MAX_NICKNAME_LENGTH = 24;
-export const MAX_ID_LENGTH = 64;
+const MAX_ID_LENGTH = 64;
 export const MAX_PEERS_IN_ROOM = 32;
 export const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
-export const RATE_LIMIT_WINDOW_MS = 5_000;
-export const RATE_LIMIT_MAX_PACKETS = 60;
+const RATE_LIMIT_WINDOW_MS = 5_000;
+const RATE_LIMIT_MAX_PACKETS = 60;
 
 export const ALLOWED_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
 const REACTION_SET = new Set<string>(ALLOWED_REACTIONS);
@@ -86,11 +86,6 @@ export function validateMediaMeta(raw: unknown): MediaAttachment | null {
       .replace(/[^a-zA-Z0-9/+.;=\- ]/g, '')
       .trim() || 'application/octet-stream';
   const size = Number(m.size);
-  const durationSecRaw = m.durationSec !== undefined ? Number(m.durationSec) : undefined;
-  const durationSec =
-    durationSecRaw !== undefined && Number.isFinite(durationSecRaw) && durationSecRaw >= 0
-      ? Math.min(600, Math.round(durationSecRaw))
-      : undefined;
 
   if (!transferId || !ALLOWED_MEDIA_KINDS.has(kind)) return null;
   if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) return null;
@@ -101,7 +96,6 @@ export function validateMediaMeta(raw: unknown): MediaAttachment | null {
     name,
     mimeType,
     size: Math.floor(size),
-    durationSec,
     progress: 0,
     status: 'receiving',
   };
@@ -118,7 +112,6 @@ export function validateIncomingPacket(raw: unknown): P2PPacket | null {
   const senderId = sanitizeId(clean.senderId);
   const senderName = sanitizeString(clean.senderName, MAX_NICKNAME_LENGTH, 'peer').trim() || 'peer';
   const timestamp = Number(clean.timestamp);
-  const ttl = Math.min(3, Math.max(0, Math.floor(Number(clean.ttl) || 0)));
 
   if (!packetId || !senderId || !roomId || !ALLOWED_PACKET_TYPES.has(type)) {
     return null;
@@ -137,7 +130,6 @@ export function validateIncomingPacket(raw: unknown): P2PPacket | null {
     senderId,
     senderName,
     timestamp,
-    ttl,
     payload: clean.payload ?? {},
     ...(sig ? { sig } : {}),
     ...(enc !== undefined ? { enc } : {}),

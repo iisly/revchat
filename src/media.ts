@@ -46,10 +46,10 @@ const EXT_MIME_MAP: Record<string, string> = {
   log: 'text/plain',
 };
 
-export type FilePreviewKind = 'none' | 'text' | 'csv' | 'pdf';
+type FilePreviewKind = 'none' | 'text' | 'csv' | 'pdf';
 export const MAX_TEXT_PREVIEW_BYTES = 200_000;
 export const MAX_CSV_PREVIEW_ROWS = 200;
-export const MAX_CSV_PREVIEW_COLS = 30;
+const MAX_CSV_PREVIEW_COLS = 30;
 
 const TEXT_PREVIEW_MIMES = new Set([
   'application/json',
@@ -284,7 +284,7 @@ export async function compressImageIfNeeded(
  * Picks an audio MIME type prioritizing MP4/AAC so iOS Safari, Android Chrome, and Desktop
  * browsers can all reliably decode received voice notes inside <audio controls>.
  */
-export function pickBestAudioMimeType(): string {
+function pickBestAudioMimeType(): string {
   if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
     return '';
   }

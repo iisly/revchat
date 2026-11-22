@@ -30,7 +30,6 @@ describe('E2EE chat wire roundtrip', () => {
       targetPeerId: 'revchat-p-bob',
       targetPeerName: 'Bob',
       ackedBy: [],
-      encrypted: true,
     };
 
     const sig = await signText(
@@ -46,7 +45,6 @@ describe('E2EE chat wire roundtrip', () => {
       senderId: 'revchat-p-alice',
       senderName: 'Alice',
       timestamp: dmMsg.timestamp,
-      ttl: 0,
       payload: { cipher, dmTarget: 'revchat-p-bob' },
       sig,
       enc: true,

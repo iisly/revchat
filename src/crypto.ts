@@ -1,7 +1,7 @@
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-export function bytesToBase64(bytes: Uint8Array): string {
+function bytesToBase64(bytes: Uint8Array): string {
   let bin = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
@@ -11,7 +11,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-export function base64ToBytes(b64: string): Uint8Array {
+function base64ToBytes(b64: string): Uint8Array {
   const normalized = b64.replace(/-/g, '+').replace(/_/g, '/');
   const pad = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
   const bin = atob(normalized + pad);

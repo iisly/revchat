@@ -33,7 +33,6 @@ import {
 import {
   ChatMessage,
   ConnectionTransport,
-  IceRouteType,
   MediaKind,
   P2PPacket,
   PeerInfo,
@@ -67,7 +66,7 @@ export interface P2PEngineCallbacks {
   onMessageReaction: (messageId: string, emoji: string, actorId: string) => void;
   onMessageDeleted: (messageId: string, senderId: string) => void;
   onMediaProgress: (transferId: string, pct: number, phase: 'sending' | 'receiving') => void;
-  onMediaReceived: (transferId: string, blob: Blob, mimeType: string, verified: boolean) => void;
+  onMediaReceived: (transferId: string, blob: Blob, mimeType: string) => void;
   onMediaCanceled: (transferId: string) => void;
   onMediaFailed: (transferId: string) => void;
   onTypingChange: (typingPeers: { peerId: string; nickname: string }[]) => void;
@@ -87,7 +86,6 @@ interface ActiveMediaMeta {
   name: string;
   mimeType: string;
   size: number;
-  durationSec?: number;
   targetPeerId?: string;
   targetPeerName?: string;
   replyTo?: ChatMessage['replyTo'];
@@ -225,7 +223,7 @@ export class P2PEngine {
       if (!safeNick) return;
       void this.signDataString(`NICK:${this.myPeerId}:${safeNick}`).then((sig) => {
         if (this.destroyed) return;
-        const packet = this.createBasePacket('NICK_CHANGE', { nickname: safeNick }, 1);
+        const packet = this.createBasePacket('NICK_CHANGE', { nickname: safeNick });
         packet.sig = sig;
         this.sendRawBroadcast(packet);
       });
@@ -449,9 +447,7 @@ export class P2PEngine {
             }
             const peer = this.peers.get(logicalId);
             if (peer && peer.transport === 'trystero-mesh') {
-              const name = peer.nickname;
               this.removePeerState(logicalId);
-              this.callbacks.onSystemLog(`${name} disconnected.`);
             }
           }
         }),
@@ -605,7 +601,7 @@ export class P2PEngine {
     }
   }
 
-  private createBasePacket(type: P2PPacket['type'], payload: any, ttl = 1): P2PPacket {
+  private createBasePacket(type: P2PPacket['type'], payload: any): P2PPacket {
     const packet: P2PPacket = {
       packetId: generateUUID(),
       type,
@@ -613,15 +609,14 @@ export class P2PEngine {
       senderId: this.myPeerId,
       senderName: this.profile.nickname,
       timestamp: Date.now(),
-      ttl,
       payload,
     };
     this.markPacketSeen(packet.packetId);
     return packet;
   }
 
-  private sendPacketAll(type: P2PPacket['type'], payload: any, ttl = 1): void {
-    const packet = this.createBasePacket(type, payload, ttl);
+  private sendPacketAll(type: P2PPacket['type'], payload: any): void {
+    const packet = this.createBasePacket(type, payload);
     this.sendRawBroadcast(packet);
   }
 
@@ -677,11 +672,11 @@ export class P2PEngine {
   }
 
   private sendHelloPacket(): void {
-    this.sendPacketAll('HELLO', this.helloPayload(), 1);
+    this.sendPacketAll('HELLO', this.helloPayload());
   }
 
   private sendHelloPacketToTarget(transportPeerId: string): void {
-    const packet = this.createBasePacket('HELLO', this.helloPayload(), 1);
+    const packet = this.createBasePacket('HELLO', this.helloPayload());
     if (this.pktAction) {
       void this.pktAction.send(packet, { target: transportPeerId }).catch(() => {});
     }
@@ -721,15 +716,11 @@ export class P2PEngine {
     switch (packet.type) {
       case 'HELLO': {
         // Re-advertise our identity back unicast & flush any pending messages meant for this peer
-        const pong = this.createBasePacket(
-          'PONG',
-          {
-            targetId: packet.senderId,
-            sentAt: packet.timestamp,
-            ...this.helloPayload(),
-          },
-          0
-        );
+        const pong = this.createBasePacket('PONG', {
+          targetId: packet.senderId,
+          sentAt: packet.timestamp,
+          ...this.helloPayload(),
+        });
         this.sendRawUnicast(pong, packet.senderId, sourceTransportPeerId);
         await this.flushOutboxForPeer(packet.senderId, sourceTransportPeerId);
         break;
@@ -737,8 +728,6 @@ export class P2PEngine {
 
       case 'CHAT_MSG': {
         let msgObj = packet.payload?.message ?? packet.payload;
-        let encrypted = false;
-        let verified = false;
 
         if (packet.enc && typeof packet.payload?.cipher === 'string') {
           const pairKey =
@@ -755,7 +744,6 @@ export class P2PEngine {
             break;
           }
           msgObj = decrypted?.message ?? decrypted;
-          encrypted = true;
         }
 
         const msg = validateChatMessage(msgObj, this.roomId);
@@ -768,25 +756,22 @@ export class P2PEngine {
         const peerInfo = this.peers.get(packet.senderId);
         if (peerInfo?.signPubKey) {
           if (!packet.sig) break;
-          verified = await verifyText(
+          const verified = await verifyText(
             peerInfo.signPubKey,
             `MSG:${msg.id}:${msg.senderId}:${msg.timestamp}:${msg.text}`,
             packet.sig
           );
           if (!verified) break;
         }
-        msg.encrypted = encrypted;
-        msg.verified = verified;
 
         this.clearPeerTyping(packet.senderId);
         this.callbacks.onChatMessage(msg);
 
         // Unicast ACK strictly to sender (no room amplification)
-        const ack = this.createBasePacket(
-          'CHAT_ACK',
-          { messageId: msg.id, ackPeerId: this.myPeerId },
-          0
-        );
+        const ack = this.createBasePacket('CHAT_ACK', {
+          messageId: msg.id,
+          ackPeerId: this.myPeerId,
+        });
         this.sendRawUnicast(ack, packet.senderId, sourceTransportPeerId);
         break;
       }
@@ -874,14 +859,10 @@ export class P2PEngine {
 
       case 'PING': {
         // Strict unicast PONG back to ping sender only
-        const pong = this.createBasePacket(
-          'PONG',
-          {
-            targetId: packet.senderId,
-            sentAt: Number(packet.payload?.sentAt) || packet.timestamp,
-          },
-          0
-        );
+        const pong = this.createBasePacket('PONG', {
+          targetId: packet.senderId,
+          sentAt: Number(packet.payload?.sentAt) || packet.timestamp,
+        });
         this.sendRawUnicast(pong, packet.senderId, sourceTransportPeerId);
         break;
       }
@@ -938,11 +919,8 @@ export class P2PEngine {
       }
 
       case 'LEAVE': {
-        const existing = this.peers.get(packet.senderId);
-        if (existing) {
-          const name = existing.nickname;
+        if (this.peers.has(packet.senderId)) {
           this.removePeerState(packet.senderId);
-          this.callbacks.onSystemLog(`${name} left the room.`);
         }
         break;
       }
@@ -970,8 +948,6 @@ export class P2PEngine {
       existing.lastSeenAt = now;
       if (transport === 'trystero-mesh') {
         existing.transport = transport;
-      } else if (existing.iceRoute === 'unknown') {
-        existing.iceRoute = 'local';
       }
       if (!existing.signPubKey && signPubKey) {
         existing.signPubKey = signPubKey;
@@ -996,7 +972,6 @@ export class P2PEngine {
         nickname: safeNick || peerId.slice(-6),
         transport,
         rttMs: transport === 'local-broadcast' ? 1 : null,
-        iceRoute: transport === 'local-broadcast' ? 'local' : 'unknown',
         signPubKey,
         ecdhPubKey,
         inCall: Boolean(helloData?.inCall),
@@ -1004,7 +979,6 @@ export class P2PEngine {
         isScreenShare: Boolean(helloData?.isScreenShare),
         lastSeenAt: now,
       });
-      this.callbacks.onSystemLog(`${safeNick || peerId} joined.`);
     }
     this.emitPeersChange();
   }
@@ -1028,8 +1002,6 @@ export class P2PEngine {
       targetPeerId: whisperPeer?.peerId,
       targetPeerName: whisperPeer?.nickname,
       ackedBy: [],
-      encrypted: Boolean(whisperPeer && this.pairwiseKeys.has(whisperPeer.peerId)),
-      verified: true,
       deliveryState: 'sent',
     };
 
@@ -1068,7 +1040,7 @@ export class P2PEngine {
       payload = { message: msg };
     }
 
-    const packet = this.createBasePacket('CHAT_MSG', payload, 1);
+    const packet = this.createBasePacket('CHAT_MSG', payload);
     packet.sig = sig;
     packet.enc = enc;
 
@@ -1098,14 +1070,14 @@ export class P2PEngine {
   public async sendReaction(messageId: string, emoji: string): Promise<void> {
     if (!isAllowedReaction(emoji)) return;
     const sig = await this.signDataString(`REACT:${messageId}:${emoji}`);
-    const packet = this.createBasePacket('REACTION', { messageId, emoji }, 1);
+    const packet = this.createBasePacket('REACTION', { messageId, emoji });
     packet.sig = sig;
     this.sendRawBroadcast(packet);
   }
 
   public async deleteMessage(messageId: string): Promise<void> {
     const sig = await this.signDataString(`DEL:${messageId}:${this.myPeerId}`);
-    const packet = this.createBasePacket('DELETE_MSG', { messageId }, 1);
+    const packet = this.createBasePacket('DELETE_MSG', { messageId });
     packet.sig = sig;
     this.sendRawBroadcast(packet);
   }
@@ -1140,7 +1112,6 @@ export class P2PEngine {
       name: attachment.name,
       mimeType: attachment.mimeType,
       size: attachment.size,
-      durationSec: attachment.durationSec,
       targetPeerId: targetPeerId || undefined,
       targetPeerName: targetPeerName || undefined,
       replyTo,
@@ -1167,14 +1138,12 @@ export class P2PEngine {
       targetPeerId: meta.targetPeerId,
       targetPeerName: meta.targetPeerName,
       ackedBy: [],
-      encrypted: meta.encrypted,
       attachment: {
         transferId: meta.transferId,
         kind: meta.kind,
         name: meta.name,
         mimeType: meta.mimeType,
         size: meta.size,
-        durationSec: meta.durationSec,
         progress: 0,
         status: 'receiving',
       },
@@ -1232,19 +1201,18 @@ export class P2PEngine {
 
     const exactBuf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     const blob = new Blob([exactBuf as ArrayBuffer], { type: meta.mimeType });
-    this.callbacks.onMediaReceived(meta.transferId, blob, meta.mimeType, verified);
+    this.callbacks.onMediaReceived(meta.transferId, blob, meta.mimeType);
 
-    const ack = this.createBasePacket(
-      'CHAT_ACK',
-      { messageId: meta.transferId, ackPeerId: this.myPeerId },
-      0
-    );
+    const ack = this.createBasePacket('CHAT_ACK', {
+      messageId: meta.transferId,
+      ackPeerId: this.myPeerId,
+    });
     this.sendRawUnicast(ack, meta.senderLogicalId, sourceTransportPeerId);
   }
 
   public async sendMediaAttachment(
     blob: Blob,
-    meta: { kind: MediaKind; name: string; mimeType: string; durationSec?: number },
+    meta: { kind: MediaKind; name: string; mimeType: string },
     replyTo?: ChatMessage['replyTo'],
     whisperPeer?: { peerId: string; nickname: string },
     onCreated?: (msg: ChatMessage) => void
@@ -1292,8 +1260,6 @@ export class P2PEngine {
       targetPeerId: whisperPeer?.peerId,
       targetPeerName: whisperPeer?.nickname,
       ackedBy: [],
-      encrypted,
-      verified: true,
       deliveryState: willStreamWebRtc ? 'sending' : 'sent',
       attachment: {
         transferId,
@@ -1301,7 +1267,6 @@ export class P2PEngine {
         name: safeName,
         mimeType: meta.mimeType,
         size: rawBuf.byteLength,
-        durationSec: meta.durationSec,
         progress: willStreamWebRtc ? 0 : 100,
         status: willStreamWebRtc ? 'sending' : 'ready',
       },
@@ -1315,7 +1280,6 @@ export class P2PEngine {
       name: safeName,
       mimeType: meta.mimeType,
       size: rawBuf.byteLength,
-      ...(meta.durationSec !== undefined ? { durationSec: meta.durationSec } : {}),
       ...(whisperPeer ? { targetPeerId: whisperPeer.peerId, targetPeerName: whisperPeer.nickname } : {}),
       ...(replyTo ? { replyTo } : {}),
       senderLogicalId: this.myPeerId,
@@ -1380,12 +1344,12 @@ export class P2PEngine {
       ctrl.abort();
       this.activeUploadAborts.delete(transferId);
     }
-    this.sendPacketAll('MEDIA_CANCEL', { transferId }, 1);
+    this.sendPacketAll('MEDIA_CANCEL', { transferId });
     this.callbacks.onMediaCanceled(transferId);
   }
 
   public sendTyping(isTyping: boolean): void {
-    this.sendPacketAll('TYPING', { isTyping }, 0);
+    this.sendPacketAll('TYPING', { isTyping });
   }
 
   // =========================================================================
@@ -1483,11 +1447,11 @@ export class P2PEngine {
         metadata: { hasVideo: options.video, isScreenShare: false },
       });
     }
-    this.sendPacketAll(
-      'CALL_STATE',
-      { inCall: true, hasVideo: options.video, isScreenShare: false },
-      1
-    );
+    this.sendPacketAll('CALL_STATE', {
+      inCall: true,
+      hasVideo: options.video,
+      isScreenShare: false,
+    });
     this.callbacks.onLocalStreamUpdated(stream, this.localHasVideo, this.localAudioMuted, false);
   }
 
@@ -1523,7 +1487,7 @@ export class P2PEngine {
           metadata: { hasVideo: false, isScreenShare: false },
         });
       }
-      this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: false, isScreenShare: false }, 1);
+      this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: false, isScreenShare: false });
       this.callbacks.onLocalStreamUpdated(
         this.localCallStream,
         false,
@@ -1568,11 +1532,11 @@ export class P2PEngine {
       });
     }
 
-    this.sendPacketAll(
-      'CALL_STATE',
-      { inCall: true, hasVideo: this.localHasVideo, isScreenShare: false },
-      1
-    );
+    this.sendPacketAll('CALL_STATE', {
+      inCall: true,
+      hasVideo: this.localHasVideo,
+      isScreenShare: false,
+    });
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
       this.localHasVideo,
@@ -1774,7 +1738,7 @@ export class P2PEngine {
           metadata: { hasVideo: true, isScreenShare: true },
         });
       }
-      this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: true, isScreenShare: true }, 1);
+      this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: true, isScreenShare: true });
       this.callbacks.onLocalStreamUpdated(
         this.localCallStream,
         true,
@@ -1812,7 +1776,7 @@ export class P2PEngine {
         metadata: { hasVideo: false, isScreenShare: false },
       });
     }
-    this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: false, isScreenShare: false }, 1);
+    this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: false, isScreenShare: false });
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
       false,
@@ -1853,7 +1817,7 @@ export class P2PEngine {
       }
     }
     void this.releaseWakeLock();
-    this.sendPacketAll('CALL_STATE', { inCall: false, hasVideo: false, isScreenShare: false }, 1);
+    this.sendPacketAll('CALL_STATE', { inCall: false, hasVideo: false, isScreenShare: false });
     this.callbacks.onLocalStreamUpdated(null, false, false, false);
   }
 
@@ -1883,13 +1847,13 @@ export class P2PEngine {
   }
 
   // =========================================================================
-  // HEARTBEAT & ICE DIAGNOSTICS
+  // HEARTBEAT & PEER PRUNING
   // =========================================================================
   private onHeartbeatTick(): void {
     if (this.destroyed) return;
     this.rateLimiter.prune();
     const now = Date.now();
-    this.sendPacketAll('PING', { sentAt: now }, 0);
+    this.sendPacketAll('PING', { sentAt: now });
 
     const failedIds = this.outbox.pruneExpired(now, OUTBOX_TTL_MS);
     if (this.peers.size > 0) {
@@ -1907,70 +1871,11 @@ export class P2PEngine {
     for (const id of expiredIds) {
       this.removePeerState(id);
     }
-
-    void this.refreshIceRoutes();
-  }
-
-  private async refreshIceRoutes(): Promise<void> {
-    if (!this.room) return;
-    try {
-      const peerInfos = this.room.getPeers();
-      let updated = false;
-      for (const [transportId, info] of Object.entries(peerInfos)) {
-        const logicalId = this.transportToLogical.get(transportId);
-        if (!logicalId) continue;
-        const localInfo = this.peers.get(logicalId);
-        if (!localInfo || !info.connection || localInfo.iceRoute !== 'unknown') continue;
-
-        const route = await this.inspectConnectionRoute(info.connection);
-        if (route !== 'unknown') {
-          localInfo.iceRoute = route;
-          updated = true;
-        }
-      }
-      if (updated) this.emitPeersChange();
-    } catch {
-      // ignore stats failures
-    }
-  }
-
-  private async inspectConnectionRoute(pc: RTCPeerConnection): Promise<IceRouteType> {
-    try {
-      const stats = await pc.getStats();
-      let selectedPair: any = null;
-      const candidates = new Map<string, any>();
-
-      stats.forEach((report: any) => {
-        if (report.type === 'remote-candidate' || report.type === 'local-candidate') {
-          candidates.set(report.id, report);
-        } else if (
-          report.type === 'candidate-pair' &&
-          (report.selected || report.state === 'succeeded')
-        ) {
-          if (!selectedPair || report.selected) {
-            selectedPair = report;
-          }
-        }
-      });
-
-      if (!selectedPair) return 'unknown';
-      const localCand = candidates.get(selectedPair.localCandidateId);
-      const remoteCand = candidates.get(selectedPair.remoteCandidateId);
-      if (
-        localCand?.candidateType === 'relay' ||
-        remoteCand?.candidateType === 'relay'
-      ) {
-        return 'relay';
-      }
-      return 'direct';
-    } catch {
-      return 'unknown';
-    }
   }
 
   private broadcastLeaveSync(): void {
     try {
-      this.sendPacketAll('LEAVE', {}, 0);
+      this.sendPacketAll('LEAVE', {});
     } catch {
       // ignore
     }
@@ -2013,8 +1918,6 @@ export class P2PEngine {
   private emitSignalingState(): void {
     this.callbacks.onSignalingChange({
       status: this.signalingStatus,
-      myPeerId: this.myPeerId,
-      roomId: this.roomId,
     });
   }
 

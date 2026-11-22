@@ -9,7 +9,7 @@ export interface SlashCommandDef {
   instant?: boolean;
 }
 
-export interface AsciiEmoteItem {
+interface AsciiEmoteItem {
   cmd: string;
   emote: string;
   label: string;
@@ -17,7 +17,7 @@ export interface AsciiEmoteItem {
 
 export const REACTION_EMOJIS = ALLOWED_REACTIONS;
 
-export const EIGHT_BALL_ANSWERS = [
+const EIGHT_BALL_ANSWERS = [
   'It is certain.',
   'Without a doubt.',
   'Yes — definitely.',
@@ -46,7 +46,7 @@ export const ASCII_EMOTE_LIST: AsciiEmoteItem[] = [
   { cmd: '/dance', emote: '♪┏(・o･)┛♪', label: 'Dance' },
 ];
 
-export const ASCII_EMOTES: Record<string, string> = Object.fromEntries(
+const ASCII_EMOTES: Record<string, string> = Object.fromEntries(
   ASCII_EMOTE_LIST.map((item) => [item.cmd, item.emote])
 );
 
@@ -146,7 +146,7 @@ export function getMatchingMentions(
   return list.filter((item) => item.tag.toLowerCase().startsWith(token));
 }
 
-export interface GameCommandResult {
+interface GameCommandResult {
   text?: string;
   error?: string;
 }

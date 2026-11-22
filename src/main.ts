@@ -148,8 +148,6 @@ class RevChatApp {
 
     this.signalingState = {
       status: 'initializing',
-      myPeerId: `revchat-p-${this.profile.clientId}`,
-      roomId: this.roomId,
     };
 
     this.setupVisualViewportFix();
@@ -503,14 +501,13 @@ class RevChatApp {
           if (pctEl) pctEl.textContent = `${pct}%`;
         }
       },
-      onMediaReceived: (transferId, blob, mimeType, verified) => {
+      onMediaReceived: (transferId, blob, mimeType) => {
         const msg = this.messageMap.get(transferId);
         if (!msg?.attachment) return;
         msg.attachment.url = this.blobs.create(blob);
         msg.attachment.mimeType = mimeType;
         msg.attachment.status = 'ready';
         msg.attachment.progress = 100;
-        msg.verified = verified;
         this.rerenderSingleMessageRow(transferId);
       },
       onMediaCanceled: (transferId) => {
@@ -823,7 +820,7 @@ class RevChatApp {
       const stableBlob = new Blob([await blob.arrayBuffer()], { type: mimeType });
       await this.engine.sendMediaAttachment(
         stableBlob,
-        { kind: 'audio', name, mimeType, durationSec },
+        { kind: 'audio', name, mimeType },
         this.replyTo,
         this.whisperTarget,
         (msg) => {
@@ -1063,9 +1060,7 @@ class RevChatApp {
         const transportLabel = p.transport === 'local-broadcast' ? 'LOCAL' : 'WEBRTC';
         const rttLabel = p.rttMs !== null ? `${p.rttMs}ms` : '...';
         const isWhispering = this.whisperTarget?.peerId === p.peerId;
-        const metaTooltip = `${transportLabel} • ${rttLabel}${
-          p.iceRoute === 'relay' ? ' • RELAY' : p.iceRoute === 'direct' ? ' • DIRECT' : ''
-        }`;
+        const metaTooltip = `${transportLabel} • ${rttLabel}`;
 
         return `
           <div class="peer-item" title="${escapeAttr(metaTooltip)}">
@@ -1637,16 +1632,36 @@ class RevChatApp {
       }
     });
 
+    const sendBtn = form?.querySelector('.send-btn') as HTMLButtonElement | null;
+    let composerFocusedBeforeSend = false;
+    sendBtn?.addEventListener('pointerdown', () => {
+      composerFocusedBeforeSend = Boolean(textarea && document.activeElement === textarea);
+    });
+    sendBtn?.addEventListener('mousedown', (e) => {
+      if (textarea && document.activeElement === textarea) {
+        e.preventDefault();
+      }
+    });
+
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
       if (textarea && textarea.value.trim()) {
+        const isTouch = window.matchMedia?.('(hover: none)').matches;
+        const shouldRefocus =
+          !isTouch || composerFocusedBeforeSend || document.activeElement === textarea;
+        composerFocusedBeforeSend = false;
         const val = textarea.value;
         textarea.value = '';
         this.composer.autoResize();
         this.updateSlashMenuDOM('');
         this.updateMentionMenuDOM('');
+        this.composer.closeNonVoicePopovers();
         this.handleSendMessage(val);
-        textarea.focus();
+        if (shouldRefocus) {
+          textarea.focus({ preventScroll: true });
+        }
+      } else {
+        composerFocusedBeforeSend = false;
       }
     });
 

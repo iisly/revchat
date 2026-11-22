@@ -1,6 +1,6 @@
 import { ChatMessage } from './types';
 
-export interface OutboxEntry {
+interface OutboxEntry {
   msg: ChatMessage;
   createdAt: number;
   pendingPeers: Set<string>;
@@ -93,10 +93,6 @@ export class MessageOutbox {
       }
     }
     return failedIds;
-  }
-
-  public remove(messageId: string): void {
-    this.entries.delete(messageId);
   }
 
   public clear(): void {

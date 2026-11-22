@@ -25,7 +25,7 @@ export interface MessageRenderContext {
   searchQuery: string;
 }
 
-export function isMessageFromSelf(m: ChatMessage, ctx: MessageRenderContext): boolean {
+function isMessageFromSelf(m: ChatMessage, ctx: MessageRenderContext): boolean {
   return (
     m.senderId === ctx.myPeerId ||
     m.senderId.startsWith(`revchat-p-${ctx.myClientId.toLowerCase()}`)
@@ -316,7 +316,7 @@ export function renderSingleMessageHtml(
   `;
 }
 
-export function renderEmptyStateHtml(ctx: MessageRenderContext): string {
+function renderEmptyStateHtml(ctx: MessageRenderContext): string {
   const isLobby = ctx.roomId === 'LOBBY';
   return `
     <div class="empty-state">
