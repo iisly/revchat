@@ -1,35 +1,8 @@
-# Dependencies
 node_modules/
-
-# Build & test outputs
 dist/
-coverage/
-*.tsbuildinfo
-
-# Environment & local secrets
 .env
 .env.*
-*.pem
-*.key
-*.crt
-
-# Logs & caches
 *.log
-npm-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.cache/
-.vite/
-
-# Editor & OS files
-.vscode/*
-!.vscode/extensions.json
-.idea/
-*.swp
-*.swo
-*.tmp
+.vscode/
 .DS_Store
 Thumbs.db
-Desktop.ini
-
-
