@@ -22,6 +22,7 @@ import {
   classifyFilePreview,
   classifyMime,
   compressImageIfNeeded,
+  extractClipboardFiles,
   formatFileSize,
   inferMimeFromFilename,
   readBlobPreviewText,
@@ -136,12 +137,16 @@ class RevChatApp {
 
     this.notifications = new NotificationManager(this.roomId, this.profile.soundMuted);
     this.composer = new ComposerController(this.root, this.roomId, {
-      onSendText: (text) => this.handleSendMessage(text),
       onTypingInput: (val) => this.handleComposerTypingInput(val),
-      onPickFiles: (files) => void this.handleSelectedFiles(files),
       onStartCall: (video) => void this.startCallFlow(video),
       onSendVoice: (blob, mime, dur) => void this.handleSendVoiceNote(blob, mime, dur),
       onRunQuickCommand: (cmdLine) => this.handleSendMessage(cmdLine),
+      onPreviewStagedImage: (url, name) => {
+        this.lightboxUrl = url;
+        this.lightboxName = name;
+        this.activeModal = 'lightbox';
+        this.renderModal();
+      },
       onToast: (msg) => this.showToast(msg),
       isInCall: () => Boolean(this.localCallStream),
     });
@@ -159,6 +164,7 @@ class RevChatApp {
 
   private setupLifecycleCleanup(): void {
     const cleanup = () => {
+      this.composer.clearStagedFiles();
       this.callDock.destroy();
       this.notifications.destroy();
       this.blobs.revokeAll();
@@ -182,6 +188,21 @@ class RevChatApp {
   }
 
   private setupGlobalKeyHandlers(): void {
+    document.addEventListener('paste', (e) => {
+      if (this.activeModal !== 'none') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.id === 'composer-input') return;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+      const files = extractClipboardFiles(e.clipboardData);
+      if (files.length > 0) {
+        e.preventDefault();
+        this.composer.stageFiles(files);
+      }
+    });
+
     document.addEventListener('keydown', (e) => {
       if (
         e.key === '/' &&
@@ -593,6 +614,7 @@ class RevChatApp {
       return;
     }
     this.callDock.reset();
+    this.composer.clearStagedFiles();
     this.blobs.revokeAll();
     this.roomId = normalized;
     this.syncUrlWithRoom(this.roomId);
@@ -988,7 +1010,7 @@ class RevChatApp {
           </div>
 
           <div class="drop-overlay" id="drop-overlay" style="display:none;">
-            Drop files here to send P2P (up to 25 MB)
+            Drop files here to attach (up to 25 MB)
           </div>
 
           <button type="button" class="jump-bottom-btn" id="btn-jump-bottom" title="Jump to latest" aria-label="Jump to latest" style="display:none;">${iconArrowDown(16)}</button>
@@ -1519,7 +1541,7 @@ class RevChatApp {
       dragDepth = 0;
       if (dropOverlay) dropOverlay.style.display = 'none';
       if (e.dataTransfer?.files?.length) {
-        void this.handleSelectedFiles(e.dataTransfer.files);
+        this.composer.stageFiles(e.dataTransfer.files);
       }
     });
 
@@ -1621,14 +1643,7 @@ class RevChatApp {
       const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
       if (e.key === 'Enter' && !e.shiftKey && !isCoarsePointer) {
         e.preventDefault();
-        if (textarea.value.trim()) {
-          const val = textarea.value;
-          textarea.value = '';
-          this.composer.autoResize();
-          this.updateSlashMenuDOM('');
-          this.updateMentionMenuDOM('');
-          this.handleSendMessage(val);
-        }
+        this.submitComposerInput(false);
       }
     });
 
@@ -1645,21 +1660,12 @@ class RevChatApp {
 
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
-      if (textarea && textarea.value.trim()) {
+      if ((textarea && textarea.value.trim()) || this.composer.hasStagedFiles()) {
         const isTouch = window.matchMedia?.('(hover: none)').matches;
         const shouldRefocus =
           !isTouch || composerFocusedBeforeSend || document.activeElement === textarea;
         composerFocusedBeforeSend = false;
-        const val = textarea.value;
-        textarea.value = '';
-        this.composer.autoResize();
-        this.updateSlashMenuDOM('');
-        this.updateMentionMenuDOM('');
-        this.composer.closeNonVoicePopovers();
-        this.handleSendMessage(val);
-        if (shouldRefocus) {
-          textarea.focus({ preventScroll: true });
-        }
+        this.submitComposerInput(shouldRefocus);
       } else {
         composerFocusedBeforeSend = false;
       }
@@ -1669,6 +1675,36 @@ class RevChatApp {
     this.bindMessageStreamEvents();
     this.bindMobileGestures();
     this.updateContextBannerDOM();
+  }
+
+  private submitComposerInput(refocusAfter: boolean): void {
+    const textarea = this.composer.getTextarea();
+    const rawVal = textarea?.value ?? '';
+    const hasText = Boolean(rawVal.trim());
+    const stagedFiles = this.composer.takeStagedFiles();
+    if (!hasText && stagedFiles.length === 0) return;
+
+    if (textarea) {
+      textarea.value = '';
+      this.composer.autoResize();
+    }
+    this.updateSlashMenuDOM('');
+    this.updateMentionMenuDOM('');
+    this.composer.closeNonVoicePopovers();
+
+    if (stagedFiles.length > 0) {
+      void this.handleSelectedFiles(stagedFiles).then(() => {
+        if (hasText) {
+          this.handleSendMessage(rawVal);
+        }
+      });
+    } else if (hasText) {
+      this.handleSendMessage(rawVal);
+    }
+
+    if (refocusAfter && textarea) {
+      textarea.focus({ preventScroll: true });
+    }
   }
 
   private handleComposerTypingInput(val: string): void {

@@ -249,41 +249,33 @@ ${REVCHAT_ASCII_BANNER}</pre>
             <div class="help-section-title">How to Chat</div>
             <div class="help-guide-card">
               <div class="help-guide-lead">
-                <b>You must be in the same room to talk.</b>
-                <span class="help-guide-sub">No accounts, no hosts, no servers. Direct device-to-device connections.</span>
+                <b>Direct P2P chat — no accounts, no servers, no logs.</b>
               </div>
               <div class="help-guide-steps">
                 <div class="help-step-item">
                   <span class="help-step-num">1</span>
                   <div class="help-step-content">
-                    <b>Share Invite Link</b>
-                    <span>Tap the invite icon at the top right for a QR code or link. Anyone who opens it joins your room immediately.</span>
+                    <b>Join the Same Room</b>
+                    <span>Share the invite link/QR at the top right, or enter the same room code.</span>
                   </div>
                 </div>
                 <div class="help-step-item">
                   <span class="help-step-num">2</span>
                   <div class="help-step-content">
-                    <b>Or Use the Same Room Code</b>
-                    <span>Tell your friends a room name. Anyone entering the same room connects automatically.</span>
+                    <b>Media, Voice, Calls &amp; Games</b>
+                    <span>Tap <code>+</code> for Calls, Voice, Files, and Games, or <code>☺</code> for emotes. Paste or drop files to preview before sending.</span>
                   </div>
                 </div>
                 <div class="help-step-item">
                   <span class="help-step-num">3</span>
                   <div class="help-step-content">
-                    <b>Calls, Voice, Files & Games via [+]</b>
-                    <span>Tap <code>+</code> beside the message box for Calls, Voice notes, Files/Media, and Games, or <code>☺</code> for ASCII emotes.</span>
-                  </div>
-                </div>
-                <div class="help-step-item">
-                  <span class="help-step-num">4</span>
-                  <div class="help-step-content">
-                    <b>Message Actions &amp; Shortcuts</b>
-                    <span>Hover a message (or tap on mobile) to react, copy, reply, or delete. Press <code>/</code> anywhere to focus the chat box.</span>
+                    <b>Actions &amp; Shortcuts</b>
+                    <span>Hover a message (tap on mobile) to react, copy, reply, or delete. Press <code>/</code> to focus chat.</span>
                   </div>
                 </div>
               </div>
               <div class="help-guide-footer">
-                No database, zero logs. Close the browser tab to wipe everything.
+                Close the browser tab to wipe everything.
               </div>
             </div>
           </div>
@@ -291,23 +283,27 @@ ${REVCHAT_ASCII_BANNER}</pre>
           <div class="help-section">
             <div class="help-section-title">Formatting (Markdown)</div>
             <div class="help-group">
-              <div class="help-cmd-row"><code>**bold** / *italic* / ~~strike~~</code><span>Inline text formatting</span></div>
-              <div class="help-cmd-row"><code>\`code\` / \`\`\`block\`\`\`</code><span>Inline and multi-line code</span></div>
+              <div class="help-cmd-row"><code>**bold**</code><span>Bold</span></div>
+              <div class="help-cmd-row"><code>*italic*</code><span>Italic</span></div>
+              <div class="help-cmd-row"><code>~~strike~~</code><span>Strikethrough</span></div>
+              <div class="help-cmd-row"><code>\`code\`</code><span>Inline code</span></div>
+              <div class="help-cmd-row"><code>\`\`\`block\`\`\`</code><span>Code block</span></div>
               <div class="help-cmd-row"><code>&gt; quote</code><span>Blockquote</span></div>
-              <div class="help-cmd-row"><code>@name / @me</code><span>Mention a peer or expand your nickname</span></div>
+              <div class="help-cmd-row"><code>@name / @me</code><span>Mention</span></div>
+              <div class="help-cmd-row"><code>https://...</code><span>Auto link</span></div>
             </div>
           </div>
 
           <div class="help-section">
             <div class="help-section-title">Commands</div>
             <div class="help-group">
-              <div class="help-cmd-row"><code>/nick &lt;name&gt;</code><span>Change your display nickname</span></div>
-              <div class="help-cmd-row"><code>/room [code]</code><span>Switch room (or join a new random room if omitted)</span></div>
-              <div class="help-cmd-row"><code>/clear</code><span>Clear local chat view</span></div>
-              <div class="help-cmd-row"><code>/size &lt;12-22|+|-|reset&gt;</code><span>Change chat text size</span></div>
-              <div class="help-cmd-row"><code>/theme [dark|light]</code><span>Switch dark/light theme</span></div>
-              <div class="help-cmd-row"><code>/mute</code><span>Toggle notification sound</span></div>
-              <div class="help-cmd-row"><code>/help</code><span>Open this guide</span></div>
+              <div class="help-cmd-row"><code>/nick &lt;name&gt;</code><span>Set nickname</span></div>
+              <div class="help-cmd-row"><code>/room [code]</code><span>Switch / random room</span></div>
+              <div class="help-cmd-row"><code>/clear</code><span>Clear chat</span></div>
+              <div class="help-cmd-row"><code>/size &lt;12-22|+|-|reset&gt;</code><span>Text size</span></div>
+              <div class="help-cmd-row"><code>/theme [dark|light]</code><span>Switch theme</span></div>
+              <div class="help-cmd-row"><code>/mute</code><span>Toggle sound</span></div>
+              <div class="help-cmd-row"><code>/help</code><span>Open guide</span></div>
             </div>
           </div>
         </div>

@@ -1,6 +1,17 @@
 import { ASCII_EMOTE_LIST } from '../commands';
 import { escapeAttr, escapeHtml } from '../markdown';
-import { MAX_VOICE_SECONDS, VoiceRecorder, formatDuration } from '../media';
+import {
+  MAX_MEDIA_BYTES,
+  MAX_VOICE_SECONDS,
+  VoiceRecorder,
+  classifyMime,
+  extractClipboardFiles,
+  formatDuration,
+  formatFileSize,
+  inferMimeFromFilename,
+  normalizePastedFile,
+} from '../media';
+import { generateUUID } from '../storage';
 import {
   iconArrowLeft,
   iconClose,
@@ -17,17 +28,28 @@ export type PopoverMode = 'none' | 'plus' | 'emotes' | 'voice';
 export type PlusSubview = 'root' | 'games';
 
 export interface ComposerCallbacks {
-  onSendText: (text: string) => void;
   onTypingInput: (text: string) => void;
-  onPickFiles: (files: FileList | File[]) => void;
   onStartCall: (video: boolean) => void;
   onSendVoice: (blob: Blob, mimeType: string, durationSec: number) => void;
   onRunQuickCommand: (cmdLine: string) => void;
+  onPreviewStagedImage: (url: string, name: string) => void;
   onToast: (text: string) => void;
   isInCall: () => boolean;
 }
 
+interface StagedAttachment {
+  id: string;
+  file: File;
+  name: string;
+  mimeType: string;
+  size: number;
+  isImage: boolean;
+  previewUrl?: string;
+}
+
 export class ComposerController {
+  private static readonly MAX_STAGED_FILES = 10;
+
   private root: HTMLElement;
   private roomId: string;
   private callbacks: ComposerCallbacks;
@@ -36,6 +58,7 @@ export class ComposerController {
   private plusSubview: PlusSubview = 'root';
   private voiceRecorder = new VoiceRecorder();
   private voiceSeconds = 0;
+  private stagedFiles: StagedAttachment[] = [];
 
   constructor(root: HTMLElement, roomId: string, callbacks: ComposerCallbacks) {
     this.root = root;
@@ -66,6 +89,165 @@ export class ComposerController {
     this.popoverMode = 'none';
     this.plusSubview = 'root';
     this.renderPopoverDOM();
+  }
+
+  public hasStagedFiles(): boolean {
+    return this.stagedFiles.length > 0;
+  }
+
+  public stageFiles(fileList: FileList | File[]): void {
+    const incoming = Array.from(fileList);
+    if (incoming.length === 0) return;
+
+    let added = 0;
+    for (const raw of incoming) {
+      const file = normalizePastedFile(raw);
+      if (file.size === 0) {
+        this.callbacks.onToast(`Skipped empty file: ${file.name}`);
+        continue;
+      }
+      const mime = file.type || inferMimeFromFilename(file.name);
+      const kind = classifyMime(mime, file.name);
+      if (kind !== 'image' && file.size > MAX_MEDIA_BYTES) {
+        this.callbacks.onToast(`${file.name} exceeds 25 MB limit.`);
+        continue;
+      }
+      if (this.stagedFiles.length >= ComposerController.MAX_STAGED_FILES) {
+        this.callbacks.onToast(`Up to ${ComposerController.MAX_STAGED_FILES} attachments at a time.`);
+        break;
+      }
+      const isImage = kind === 'image';
+      const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+      this.stagedFiles.push({
+        id: generateUUID(),
+        file,
+        name: file.name,
+        mimeType: mime,
+        size: file.size,
+        isImage,
+        previewUrl,
+      });
+      added++;
+    }
+
+    if (added > 0) {
+      this.closeNonVoicePopovers();
+      this.renderAttachmentsDOM();
+      if (!this.isTouchDevice()) {
+        this.getTextarea()?.focus({ preventScroll: true });
+      }
+    }
+  }
+
+  public removeStagedFile(id: string): void {
+    const idx = this.stagedFiles.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const [removed] = this.stagedFiles.splice(idx, 1);
+    if (removed.previewUrl) {
+      URL.revokeObjectURL(removed.previewUrl);
+    }
+    this.renderAttachmentsDOM();
+  }
+
+  public takeStagedFiles(): File[] {
+    if (this.stagedFiles.length === 0) return [];
+    const files = this.stagedFiles.map((s) => s.file);
+    this.clearStagedFiles();
+    return files;
+  }
+
+  public clearStagedFiles(): void {
+    for (const s of this.stagedFiles) {
+      if (s.previewUrl) URL.revokeObjectURL(s.previewUrl);
+    }
+    if (this.stagedFiles.length === 0) return;
+    this.stagedFiles = [];
+    this.renderAttachmentsDOM();
+  }
+
+  private renderAttachmentsDOM(): void {
+    const slot = this.root.querySelector('#composer-attachments-slot') as HTMLElement | null;
+    if (!slot) return;
+    if (this.stagedFiles.length === 0) {
+      slot.innerHTML = '';
+      return;
+    }
+
+    slot.innerHTML = `
+      <div class="composer-attachments" role="list" aria-label="Pending attachments">
+        ${this.stagedFiles
+          .map((item) => {
+            const safeId = escapeAttr(item.id);
+            const safeName = escapeHtml(item.name);
+            const safeAttrName = escapeAttr(item.name);
+            const sizeStr = formatFileSize(item.size);
+            if (item.isImage && item.previewUrl) {
+              return `
+                <div class="staged-item staged-image" role="listitem" title="${escapeAttr(`${item.name} • ${sizeStr}`)}">
+                  <img
+                    src="${escapeAttr(item.previewUrl)}"
+                    alt="${safeAttrName}"
+                    class="staged-thumb"
+                    data-staged-preview="${safeId}"
+                  />
+                  <button
+                    type="button"
+                    class="staged-remove-btn"
+                    data-staged-remove="${safeId}"
+                    title="Remove ${safeAttrName}"
+                    aria-label="Remove ${safeAttrName}"
+                  >${iconClose(11)}</button>
+                </div>
+              `;
+            }
+            return `
+              <div class="staged-item staged-file" role="listitem" title="${escapeAttr(`${item.name} • ${sizeStr}`)}">
+                <span class="staged-file-icon" aria-hidden="true">${iconPaperclip(14)}</span>
+                <span class="staged-file-meta">
+                  <span class="staged-file-name">${safeName}</span>
+                  <span class="staged-file-size">${sizeStr}</span>
+                </span>
+                <button
+                  type="button"
+                  class="staged-remove-btn"
+                  data-staged-remove="${safeId}"
+                  title="Remove ${safeAttrName}"
+                  aria-label="Remove ${safeAttrName}"
+                >${iconClose(11)}</button>
+              </div>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+
+    slot.querySelectorAll('[data-staged-remove]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-staged-remove');
+        if (id) this.removeStagedFile(id);
+      });
+    });
+
+    slot.querySelectorAll('[data-staged-preview]').forEach((imgEl) => {
+      imgEl.addEventListener('click', () => {
+        const id = imgEl.getAttribute('data-staged-preview');
+        const item = this.stagedFiles.find((s) => s.id === id);
+        if (item?.previewUrl) {
+          this.callbacks.onPreviewStagedImage(item.previewUrl, item.name);
+        }
+      });
+      imgEl.addEventListener('error', () => {
+        const id = imgEl.getAttribute('data-staged-preview');
+        const item = this.stagedFiles.find((s) => s.id === id);
+        if (item && item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl);
+          item.previewUrl = undefined;
+          item.isImage = false;
+          this.renderAttachmentsDOM();
+        }
+      });
+    });
   }
 
   private isTouchDevice(): boolean {
@@ -111,6 +293,7 @@ export class ComposerController {
   public renderHtml(): string {
     return `
       <div id="composer-popover-slot"></div>
+      <div id="composer-attachments-slot"></div>
       <form class="composer" id="composer-form">
         <button
           type="button"
@@ -171,10 +354,10 @@ export class ComposerController {
 
     fileInput?.addEventListener('change', () => {
       if (fileInput.files?.length) {
-        this.callbacks.onPickFiles(fileInput.files);
+        this.stageFiles(fileInput.files);
         fileInput.value = '';
       }
-      this.closePopovers();
+      this.closeNonVoicePopovers();
     });
 
     const ta = this.getTextarea();
@@ -182,21 +365,14 @@ export class ComposerController {
       if (this.isTouchDevice()) this.closeNonVoicePopovers();
     });
     ta?.addEventListener('paste', (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      const files: File[] = [];
-      for (const item of items) {
-        if (item.kind === 'file') {
-          const f = item.getAsFile();
-          if (f) files.push(f);
-        }
-      }
+      const files = extractClipboardFiles(e.clipboardData);
       if (files.length > 0) {
         e.preventDefault();
-        this.callbacks.onPickFiles(files);
+        this.stageFiles(files);
       }
     });
 
+    this.renderAttachmentsDOM();
     this.renderPopoverDOM();
   }
 

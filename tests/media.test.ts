@@ -3,7 +3,9 @@ import {
   BlobUrlRegistry,
   classifyFilePreview,
   classifyMime,
+  extractClipboardFiles,
   inferMimeFromFilename,
+  normalizePastedFile,
   parseDelimitedTable,
   readBlobPreviewText,
 } from '../src/media';
@@ -90,5 +92,36 @@ describe('media classification and file preview helpers', () => {
     const binRes = await readBlobPreviewText(binary);
     expect(binRes.isBinary).toBe(true);
     expect(binRes.truncated).toBe(false);
+  });
+
+  it('extracts and normalizes clipboard files across items and files fallbacks', () => {
+    const pastedPng = new File([new Uint8Array([1, 2, 3])], '', { type: 'image/png' });
+    const fakeTransferWithItems = {
+      items: [
+        { kind: 'string', getAsFile: () => null },
+        { kind: 'file', getAsFile: () => pastedPng },
+      ],
+      files: [],
+    } as unknown as DataTransfer;
+
+    expect(extractClipboardFiles(fakeTransferWithItems)).toEqual([pastedPng]);
+
+    const namedFile = new File(['abc'], 'notes.txt', { type: 'text/plain' });
+    const fakeTransferFilesOnly = {
+      items: [{ kind: 'string', getAsFile: () => null }],
+      files: [namedFile],
+    } as unknown as DataTransfer;
+
+    expect(extractClipboardFiles(fakeTransferFilesOnly)).toEqual([namedFile]);
+    expect(extractClipboardFiles(null)).toEqual([]);
+
+    const normImg = normalizePastedFile(pastedPng);
+    expect(normImg.name).toBe('pasted-image.png');
+    expect(normImg.type).toBe('image/png');
+
+    const unnamedPdf = new File(['%PDF'], '', { type: 'application/pdf' });
+    expect(normalizePastedFile(unnamedPdf).name).toBe('pasted-file.pdf');
+
+    expect(normalizePastedFile(namedFile)).toBe(namedFile);
   });
 });

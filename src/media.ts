@@ -85,6 +85,45 @@ export function inferMimeFromFilename(filename: string): string {
   return EXT_MIME_MAP[ext] || 'application/octet-stream';
 }
 
+const MIME_DEFAULT_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+};
+
+export function extractClipboardFiles(clipboardData: DataTransfer | null | undefined): File[] {
+  if (!clipboardData) return [];
+  const files: File[] = [];
+  if (clipboardData.items) {
+    for (const item of clipboardData.items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+  }
+  if (files.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+    files.push(...Array.from(clipboardData.files));
+  }
+  return files;
+}
+
+export function normalizePastedFile(file: File): File {
+  if (file.name && file.name.trim()) return file;
+  const mime = (file.type || '').toLowerCase().split(';')[0].trim();
+  const ext = MIME_DEFAULT_EXT[mime] || 'bin';
+  const prefix = mime.startsWith('image/') ? 'pasted-image' : 'pasted-file';
+  const name = `${prefix}.${ext}`;
+  return new File([file], name, {
+    type: file.type || inferMimeFromFilename(name),
+  });
+}
+
 export function classifyFilePreview(mimeType: string, filename = ''): FilePreviewKind {
   const mime = mimeType.toLowerCase().split(';')[0].trim();
   const base = filename.toLowerCase().split(/[\\/]/).pop() || '';

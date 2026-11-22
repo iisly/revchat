@@ -556,12 +556,13 @@ button.icon-btn.muted {
 
 .ascii-banner {
   font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.15;
+  font-size: clamp(7.5px, 2.3vw, 11px);
+  line-height: 1.2;
   color: var(--accent);
   margin: 0 auto;
+  max-width: 100%;
   text-align: center;
-  overflow-x: auto;
+  overflow: hidden;
   white-space: pre;
 }
 
@@ -1161,6 +1162,7 @@ button.icon-btn.muted {
   color: var(--fg);
   font-size: 13px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .help-cmd-row span {
@@ -1720,6 +1722,107 @@ button.danger:hover {
   max-height: min(360px, calc(var(--app-height) - var(--topbar-height) - var(--bottombar-height) - 12px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+#composer-attachments-slot {
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.composer-attachments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.staged-item {
+  position: relative;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.staged-image {
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+}
+
+.staged-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+}
+
+.staged-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  max-width: 210px;
+  padding: 6px 26px 6px 10px;
+  font-family: var(--font-mono);
+}
+
+.staged-file-icon {
+  color: var(--fg-muted);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.staged-file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.staged-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staged-file-size {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.staged-remove-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.72);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.staged-remove-btn:hover {
+  background: var(--err);
+  border-color: var(--err);
 }
 
 .popover-header {
@@ -2402,6 +2505,37 @@ button.danger:hover {
 }
 
 @media (max-width: 768px) {
+  .empty-state {
+    width: 100%;
+    padding: 14px 12px;
+  }
+
+  .help-guide-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .help-group {
+    padding: 8px 10px;
+  }
+
+  .help-cmd-row {
+    font-size: 12.5px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .help-cmd-row code {
+    font-size: 12px;
+    padding: 2px 6px;
+  }
+
+  .help-cmd-row span {
+    font-size: 12.5px;
+    white-space: nowrap;
+    text-align: left;
+  }
+
   .composer-popover {
     border-left: none;
     border-right: none;
