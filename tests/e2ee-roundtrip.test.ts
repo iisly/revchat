@@ -4,118 +4,91 @@ import {
   derivePairwiseAesKey,
   encryptJson,
   generateSessionIdentity,
-  importRoomKey,
   signText,
   verifyText,
 } from '../src/crypto';
 import { validateChatMessage, validateIncomingPacket } from '../src/security';
-import { generateRoomKey } from '../src/storage';
 import { ChatMessage } from '../src/types';
 
 describe('E2EE chat wire roundtrip', () => {
-  it('encrypts, validates packet, decrypts, and validates room E2EE CHAT_MSG cleanly', async () => {
-    const roomKeyStr = generateRoomKey();
-    const roomKeyA = await importRoomKey(roomKeyStr);
-    const roomKeyB = await importRoomKey(roomKeyStr);
-    const senderIdData = await generateSessionIdentity();
-
-    const msg: ChatMessage = {
-      id: 'msg-e2ee-1',
-      roomId: 'ROOM-PRIV1',
-      senderId: 'revchat-p-alice',
-      senderName: 'Alice',
-      text: 'Top secret hello!',
-      timestamp: 1_700_000_000_000,
-      ackedBy: [],
-      encrypted: true,
-    };
-
-    const sig = await signText(
-      senderIdData.signKeyPair.privateKey,
-      `MSG:${msg.id}:${msg.senderId}:${msg.timestamp}:${msg.text}`
-    );
-    const cipher = await encryptJson(roomKeyA!, msg);
-
-    const validatedPacket = validateIncomingPacket({
-      packetId: 'pkt-100',
-      type: 'CHAT_MSG',
-      roomId: 'ROOM-PRIV1',
-      senderId: 'revchat-p-alice',
-      senderName: 'Alice',
-      timestamp: msg.timestamp,
-      ttl: 1,
-      payload: { cipher },
-      sig,
-      enc: true,
-    });
-    expect(validatedPacket).not.toBeNull();
-    expect(validatedPacket?.enc).toBe(true);
-
-    const decrypted = await decryptJson<any>(roomKeyB!, validatedPacket!.payload.cipher);
-    expect(decrypted).not.toBeNull();
-
-    const msgObj = decrypted?.message ?? decrypted;
-    const validatedMsg = validateChatMessage(msgObj, 'ROOM-PRIV1');
-    expect(validatedMsg).not.toBeNull();
-    expect(validatedMsg?.id).toBe(msg.id);
-    expect(validatedMsg?.text).toBe('Top secret hello!');
-
-    const sigOk = await verifyText(
-      senderIdData.signPubB64,
-      `MSG:${validatedMsg!.id}:${validatedMsg!.senderId}:${validatedMsg!.timestamp}:${validatedMsg!.text}`,
-      validatedPacket!.sig!
-    );
-    expect(sigOk).toBe(true);
-  });
-
-  it('handles pairwise ECDH DM encryption & validation accurately', async () => {
+  it('encrypts, signs, validates, and decrypts pairwise ECDH DM CHAT_MSG cleanly', async () => {
     const alice = await generateSessionIdentity();
     const bob = await generateSessionIdentity();
 
     const alicePairKey = await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, bob.ecdhPubB64);
     const bobPairKey = await derivePairwiseAesKey(bob.ecdhKeyPair.privateKey, alice.ecdhPubB64);
+    expect(alicePairKey).not.toBeNull();
+    expect(bobPairKey).not.toBeNull();
 
     const dmMsg: ChatMessage = {
-      id: 'dm-1',
-      roomId: 'LOBBY',
+      id: 'dm-e2ee-1',
+      roomId: 'ROOM-PRIV1',
       senderId: 'revchat-p-alice',
       senderName: 'Alice',
-      text: 'Private whisper',
+      text: 'Private whisper!',
       timestamp: 1_700_000_005_000,
       targetPeerId: 'revchat-p-bob',
       targetPeerName: 'Bob',
       ackedBy: [],
+      encrypted: true,
     };
 
+    const sig = await signText(
+      alice.signKeyPair.privateKey,
+      `MSG:${dmMsg.id}:${dmMsg.senderId}:${dmMsg.timestamp}:${dmMsg.text}`
+    );
     const cipher = await encryptJson(alicePairKey!, dmMsg);
+
     const pkt = validateIncomingPacket({
       packetId: 'pkt-dm-1',
       type: 'CHAT_MSG',
-      roomId: 'LOBBY',
+      roomId: 'ROOM-PRIV1',
       senderId: 'revchat-p-alice',
       senderName: 'Alice',
       timestamp: dmMsg.timestamp,
       ttl: 0,
       payload: { cipher, dmTarget: 'revchat-p-bob' },
+      sig,
       enc: true,
     });
+    expect(pkt).not.toBeNull();
+    expect(pkt?.enc).toBe(true);
 
     const decrypted = await decryptJson<any>(bobPairKey!, pkt!.payload.cipher);
-    const validatedMsg = validateChatMessage(decrypted?.message ?? decrypted, 'LOBBY');
-    expect(validatedMsg?.text).toBe('Private whisper');
+    expect(decrypted).not.toBeNull();
+
+    const validatedMsg = validateChatMessage(decrypted?.message ?? decrypted, 'ROOM-PRIV1');
+    expect(validatedMsg).not.toBeNull();
+    expect(validatedMsg?.id).toBe(dmMsg.id);
+    expect(validatedMsg?.text).toBe('Private whisper!');
     expect(validatedMsg?.targetPeerId).toBe('revchat-p-bob');
+
+    const sigOk = await verifyText(
+      alice.signPubB64,
+      `MSG:${validatedMsg!.id}:${validatedMsg!.senderId}:${validatedMsg!.timestamp}:${validatedMsg!.text}`,
+      pkt!.sig!
+    );
+    expect(sigOk).toBe(true);
   });
 
-  it('rejects ciphertext when decrypted with a different room key', async () => {
-    const key1 = await importRoomKey(generateRoomKey());
-    const wrongKey = await importRoomKey(generateRoomKey());
-    const cipher = await encryptJson(key1!, {
+  it('rejects DM ciphertext when decrypted by a third peer with a different pairwise key', async () => {
+    const alice = await generateSessionIdentity();
+    const bob = await generateSessionIdentity();
+    const charlie = await generateSessionIdentity();
+
+    const aliceToBobKey = await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, bob.ecdhPubB64);
+    const charlieFromAliceKey = await derivePairwiseAesKey(
+      charlie.ecdhKeyPair.privateKey,
+      alice.ecdhPubB64
+    );
+
+    const cipher = await encryptJson(aliceToBobKey!, {
       id: 'm1',
-      senderId: 'p1',
-      senderName: 'A',
-      text: 'secret',
+      senderId: 'revchat-p-alice',
+      senderName: 'Alice',
+      text: 'secret for bob only',
       timestamp: 1_700_000_000_000,
     });
-    expect(await decryptJson(wrongKey!, cipher)).toBeNull();
+    expect(await decryptJson(charlieFromAliceKey!, cipher)).toBeNull();
   });
 });

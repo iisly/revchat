@@ -19,8 +19,12 @@ import { escapeAttr, escapeHtml } from './markdown';
 import {
   BlobUrlRegistry,
   MAX_MEDIA_BYTES,
+  classifyFilePreview,
   classifyMime,
   compressImageIfNeeded,
+  formatFileSize,
+  inferMimeFromFilename,
+  readBlobPreviewText,
 } from './media';
 import { NotificationManager } from './notifications';
 import { P2PEngine } from './p2p-engine';
@@ -51,6 +55,7 @@ import {
 import { CallDockController } from './ui/call-bar';
 import { ComposerController } from './ui/composer';
 import {
+  iconArrowDown,
   iconClose,
   iconHelp,
   iconMenu,
@@ -68,7 +73,7 @@ import {
   renderSingleMessageHtml,
   shouldGroupMessages,
 } from './ui/messages';
-import { ActiveModalType, renderModalDOM } from './ui/modals';
+import { ActiveModalType, FilePreviewState, renderModalDOM } from './ui/modals';
 
 const MAX_MEMORY_MESSAGES = 1000;
 
@@ -76,7 +81,6 @@ class RevChatApp {
   private root: HTMLElement;
   private profile: UserProfile;
   private roomId: string;
-  private roomKey: string | null;
   private engine!: P2PEngine;
   private notifications: NotificationManager;
   private blobs = new BlobUrlRegistry();
@@ -102,6 +106,7 @@ class RevChatApp {
   private inviteQrSvg = '';
   private lightboxUrl?: string;
   private lightboxName?: string;
+  private filePreview?: FilePreviewState;
   private searchOpen = false;
   private searchQuery = '';
   private replyTo: ChatMessage['replyTo'] | undefined = undefined;
@@ -126,10 +131,8 @@ class RevChatApp {
     this.applyTheme(false);
     this.setFontSize(this.fontSizePx, false);
 
-    const parsed = parseRoomFromUrl(window.location.href);
-    this.roomId = parsed.roomId;
-    this.roomKey = parsed.roomKey;
-    this.syncUrlWithRoom(this.roomId, this.roomKey);
+    this.roomId = parseRoomFromUrl(window.location.href);
+    this.syncUrlWithRoom(this.roomId);
 
     this.notifications = new NotificationManager(this.roomId, this.profile.soundMuted);
     this.composer = new ComposerController(this.root, this.roomId, {
@@ -173,15 +176,43 @@ class RevChatApp {
       }
     });
     window.addEventListener('hashchange', () => {
-      const parsed = parseRoomFromUrl(window.location.href);
-      if (parsed.roomId !== this.roomId || parsed.roomKey !== this.roomKey) {
-        void this.switchRoom(parsed.roomId, parsed.roomKey);
+      const nextRoomId = parseRoomFromUrl(window.location.href);
+      if (nextRoomId !== this.roomId) {
+        void this.switchRoom(nextRoomId);
       }
     });
   }
 
   private setupGlobalKeyHandlers(): void {
     document.addEventListener('keydown', (e) => {
+      if (
+        e.key === '/' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.isComposing &&
+        this.activeModal === 'none'
+      ) {
+        const active = document.activeElement as HTMLElement | null;
+        const tag = active?.tagName;
+        if (
+          tag !== 'INPUT' &&
+          tag !== 'TEXTAREA' &&
+          tag !== 'SELECT' &&
+          !active?.isContentEditable
+        ) {
+          const ta = this.composer.getTextarea();
+          if (ta) {
+            e.preventDefault();
+            if (this.mobileDrawerOpen) this.setMobileDrawerOpen(false);
+            ta.focus({ preventScroll: true });
+            const end = ta.value.length;
+            ta.setSelectionRange(end, end);
+            return;
+          }
+        }
+      }
+
       if (e.key === 'Escape') {
         if (this.activeModal !== 'none') {
           this.activeModal = 'none';
@@ -200,10 +231,12 @@ class RevChatApp {
           return;
         }
         const openPickers = this.root.querySelectorAll('.reaction-picker-slot:not(:empty)');
-        if (openPickers.length > 0) {
+        const openToolbars = this.root.querySelectorAll('.msg-row.toolbar-open');
+        if (openPickers.length > 0 || openToolbars.length > 0) {
           openPickers.forEach((slot) => {
             slot.innerHTML = '';
           });
+          openToolbars.forEach((row) => row.classList.remove('toolbar-open'));
           return;
         }
         if (this.searchOpen) {
@@ -217,10 +250,20 @@ class RevChatApp {
     });
 
     document.addEventListener('click', (e) => {
-      if (!this.composer.hasOpenPopover()) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
+
+      if (!target.closest('.msg-row')) {
+        this.root.querySelectorAll('.msg-row.toolbar-open').forEach((row) => {
+          row.classList.remove('toolbar-open');
+        });
+      }
+
+      if (!this.composer.hasOpenPopover()) return;
+      const slot = this.root.querySelector('#composer-popover-slot');
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
       if (
+        (slot && path.includes(slot)) ||
         target.closest('#composer-popover-slot') ||
         target.closest('#btn-plus-drawer') ||
         target.closest('#btn-emote-picker')
@@ -231,9 +274,9 @@ class RevChatApp {
     });
   }
 
-  private syncUrlWithRoom(roomId: string, roomKey: string | null): void {
+  private syncUrlWithRoom(roomId: string): void {
     try {
-      const next = buildRoomUrl(window.location.href, roomId, roomKey);
+      const next = buildRoomUrl(window.location.href, roomId);
       window.history.replaceState({}, '', next);
     } catch {
       // ignore
@@ -241,14 +284,17 @@ class RevChatApp {
   }
 
   private getInviteUrl(): string {
-    return buildRoomUrl(window.location.href, this.roomId, this.roomKey);
+    return buildRoomUrl(window.location.href, this.roomId);
   }
 
   private setupVisualViewportFix(): void {
     const updateHeight = () => {
       const vv = window.visualViewport;
-      const h = vv ? vv.height : window.innerHeight;
+      const h = Math.round(vv ? vv.height : window.innerHeight);
       document.documentElement.style.setProperty('--app-height', `${h}px`);
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
       if (this.isAtBottom) {
         this.scrollToBottom();
       }
@@ -268,6 +314,10 @@ class RevChatApp {
         : 'light';
     }
     document.documentElement.setAttribute('data-theme', this.profile.theme);
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) {
+      themeMeta.setAttribute('content', this.profile.theme === 'dark' ? '#181818' : '#f5f5f5');
+    }
     if (save) saveSessionProfile(this.profile);
   }
 
@@ -275,7 +325,7 @@ class RevChatApp {
     const themeBtn = this.root.querySelector('#btn-theme');
     if (!themeBtn) return;
     const isDark = this.profile.theme === 'dark';
-    themeBtn.innerHTML = isDark ? iconSun(15) : iconMoon(15);
+    themeBtn.innerHTML = isDark ? iconSun(16) : iconMoon(16);
     themeBtn.setAttribute(
       'title',
       isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'
@@ -366,7 +416,7 @@ class RevChatApp {
   }
 
   private initEngine(): void {
-    this.engine = new P2PEngine(this.profile, this.roomId, this.roomKey, {
+    this.engine = new P2PEngine(this.profile, this.roomId, {
       onSignalingChange: (state) => {
         this.signalingState = state;
         this.updateStatusDOM();
@@ -539,17 +589,16 @@ class RevChatApp {
     }, 2400);
   }
 
-  private async switchRoom(targetRoom: string, targetKey: string | null = null): Promise<void> {
+  private async switchRoom(targetRoom: string): Promise<void> {
     const normalized = normalizeRoomId(targetRoom);
-    if (normalized === this.roomId && targetKey === this.roomKey) {
+    if (normalized === this.roomId) {
       this.setMobileDrawerOpen(false);
       return;
     }
     this.callDock.reset();
     this.blobs.revokeAll();
     this.roomId = normalized;
-    this.roomKey = targetKey;
-    this.syncUrlWithRoom(this.roomId, this.roomKey);
+    this.syncUrlWithRoom(this.roomId);
     this.composer.setRoomId(this.roomId);
     this.notifications.updateContext(this.roomId, this.profile.soundMuted);
     this.replyTo = undefined;
@@ -561,14 +610,14 @@ class RevChatApp {
     this.messageMap.clear();
     this.localCallStream = null;
     this.remoteCallStreams = [];
-    await this.engine.switchRoom(this.roomId, this.roomKey);
+    await this.engine.switchRoom(this.roomId);
     this.render();
     this.scrollToBottom();
   }
 
   private async switchToRandomRoom(): Promise<void> {
     const code = generateRoomCode();
-    await this.switchRoom(code, null);
+    await this.switchRoom(code);
   }
 
   private toggleSoundMute(): void {
@@ -632,7 +681,7 @@ class RevChatApp {
       }
       case '/room': {
         if (argStr) {
-          void this.switchRoom(argStr, null);
+          void this.switchRoom(argStr);
         } else {
           void this.switchToRandomRoom();
         }
@@ -716,23 +765,29 @@ class RevChatApp {
         continue;
       }
       let blobToSend: Blob = file;
-      let mime = file.type || 'application/octet-stream';
-      const kind = classifyMime(mime, file.name);
+      let mime = file.type || inferMimeFromFilename(file.name);
+      let kind = classifyMime(mime, file.name);
 
       if (kind === 'image') {
         const compressed = await compressImageIfNeeded(file);
         blobToSend = compressed.blob;
         mime = compressed.mimeType;
+        if (!compressed.canRenderAsImage) {
+          kind = 'file';
+        }
       }
 
-      if (blobToSend.size > MAX_MEDIA_BYTES) {
+      const stableBytes = await blobToSend.arrayBuffer();
+      const stableBlob = new Blob([stableBytes], { type: mime });
+
+      if (stableBlob.size > MAX_MEDIA_BYTES) {
         this.showToast(`${file.name} exceeds 25 MB limit.`);
         continue;
       }
 
       try {
         await this.engine.sendMediaAttachment(
-          blobToSend,
+          stableBlob,
           {
             kind,
             name: sanitizeFilename(file.name),
@@ -742,7 +797,7 @@ class RevChatApp {
           this.whisperTarget,
           (msg) => {
             if (msg.attachment) {
-              msg.attachment.url = this.blobs.create(blobToSend);
+              msg.attachment.url = this.blobs.create(stableBlob);
             }
             this.replyTo = undefined;
             this.updateContextBannerDOM();
@@ -765,14 +820,15 @@ class RevChatApp {
     const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
     const name = `voice-${durationSec}s.${ext}`;
     try {
+      const stableBlob = new Blob([await blob.arrayBuffer()], { type: mimeType });
       await this.engine.sendMediaAttachment(
-        blob,
+        stableBlob,
         { kind: 'audio', name, mimeType, durationSec },
         this.replyTo,
         this.whisperTarget,
         (msg) => {
           if (msg.attachment) {
-            msg.attachment.url = this.blobs.create(blob);
+            msg.attachment.url = this.blobs.create(stableBlob);
           }
           this.replyTo = undefined;
           this.updateContextBannerDOM();
@@ -894,8 +950,8 @@ class RevChatApp {
                 id="btn-theme"
                 title="${this.profile.theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}"
                 aria-label="Toggle theme"
-              >${this.profile.theme === 'dark' ? iconSun(15) : iconMoon(15)}</button>
-              <button type="button" class="small icon-btn" id="btn-help" title="Commands & Help" aria-label="Help">${iconHelp(15)}</button>
+              >${this.profile.theme === 'dark' ? iconSun(16) : iconMoon(16)}</button>
+              <button type="button" class="small icon-btn" id="btn-help" title="Commands & Help" aria-label="Help">${iconHelp(16)}</button>
             </div>
           </div>
         </aside>
@@ -904,12 +960,12 @@ class RevChatApp {
         <main class="chat-pane" id="chat-pane">
           <header class="chat-topbar">
             <div class="topbar-left">
-              <button type="button" class="icon-btn mobile-only" id="btn-open-drawer" title="Open Menu" aria-label="Open menu">${iconMenu(16)}</button>
+              <button type="button" class="small icon-btn mobile-only" id="btn-open-drawer" title="Open Menu" aria-label="Open menu">${iconMenu(15)}</button>
               <span class="room-badge" id="topbar-room-title">#${escapeHtml(this.roomId)}</span>
               <span class="badge ${this.peers.length > 0 ? 'ok' : ''}" id="topbar-peer-badge">${this.peers.length} online</span>
             </div>
             <div class="topbar-actions">
-              <button type="button" class="small primary" id="btn-topbar-invite" title="QR Code & Invite Link">${iconShare(14)}<span>INVITE</span></button>
+              <button type="button" class="small primary icon-btn" id="btn-topbar-invite" title="Invite (QR Code & Link)" aria-label="Invite">${iconShare(15)}</button>
               <button
                 type="button"
                 class="small icon-btn ${this.profile.soundMuted ? 'muted' : ''}"
@@ -938,9 +994,7 @@ class RevChatApp {
             Drop files here to send P2P (up to 25 MB)
           </div>
 
-          <button type="button" class="jump-bottom-btn" id="btn-jump-bottom" style="display:none;">
-            ↓ Jump to latest
-          </button>
+          <button type="button" class="jump-bottom-btn" id="btn-jump-bottom" title="Jump to latest" aria-label="Jump to latest" style="display:none;">${iconArrowDown(16)}</button>
 
           <div id="slash-menu-container"></div>
           <div id="mention-menu-container"></div>
@@ -1234,12 +1288,17 @@ class RevChatApp {
     if (!btn) return;
     if (!this.isAtBottom && this.unreadWhileScrolled > 0) {
       btn.style.display = 'inline-flex';
-      btn.textContent = `↓ ${this.unreadWhileScrolled} new message${
-        this.unreadWhileScrolled > 1 ? 's' : ''
-      }`;
+      btn.classList.add('has-unread');
+      btn.innerHTML = `${iconArrowDown(15)}<span class="jump-unread-count">${this.unreadWhileScrolled}</span>`;
+      btn.setAttribute(
+        'aria-label',
+        `Jump to ${this.unreadWhileScrolled} new message${this.unreadWhileScrolled > 1 ? 's' : ''}`
+      );
     } else if (!this.isAtBottom) {
       btn.style.display = 'inline-flex';
-      btn.textContent = '↓ Bottom';
+      btn.classList.remove('has-unread');
+      btn.innerHTML = iconArrowDown(16);
+      btn.setAttribute('aria-label', 'Jump to latest');
     } else {
       btn.style.display = 'none';
     }
@@ -1249,6 +1308,50 @@ class RevChatApp {
     this.activeModal = 'invite';
     this.inviteQrSvg = await generateQrSvg(this.getInviteUrl());
     this.renderModal();
+  }
+
+  private async openFilePreviewModal(messageId: string): Promise<void> {
+    const msg = this.messageMap.get(messageId);
+    const att = msg?.attachment;
+    if (!att?.url || !att.url.startsWith('blob:')) return;
+
+    const kind = classifyFilePreview(att.mimeType, att.name);
+    if (kind === 'none') return;
+
+    if (kind === 'pdf') {
+      this.filePreview = {
+        kind: 'pdf',
+        name: att.name,
+        url: att.url,
+        sizeLabel: formatFileSize(att.size),
+      };
+      this.activeModal = 'file-preview';
+      this.renderModal();
+      return;
+    }
+
+    try {
+      const { text, truncated, isBinary } = await readBlobPreviewText(att.url);
+      const delimiter: ',' | '\t' =
+        att.name.toLowerCase().endsWith('.tsv') || att.mimeType === 'text/tab-separated-values'
+          ? '\t'
+          : ',';
+      this.filePreview = {
+        kind,
+        name: att.name,
+        url: att.url,
+        sizeLabel: formatFileSize(att.size),
+        text: isBinary ? undefined : text,
+        truncated,
+        csvViewMode: 'table',
+        delimiter,
+        error: isBinary ? 'Binary content detected — use SAVE to download.' : undefined,
+      };
+      this.activeModal = 'file-preview';
+      this.renderModal();
+    } catch {
+      this.showToast('Could not preview file');
+    }
   }
 
   private renderModal(): void {
@@ -1262,6 +1365,7 @@ class RevChatApp {
         inviteQrSvg: this.inviteQrSvg,
         lightboxUrl: this.lightboxUrl,
         lightboxName: this.lightboxName,
+        filePreview: this.filePreview,
       },
       {
         onClose: () => {
@@ -1269,6 +1373,13 @@ class RevChatApp {
           this.renderModal();
         },
         onToast: (msg) => this.showToast(msg),
+        onToggleCsvMode: () => {
+          if (this.filePreview && this.filePreview.kind === 'csv') {
+            this.filePreview.csvViewMode =
+              this.filePreview.csvViewMode === 'raw' ? 'table' : 'raw';
+            this.renderModal();
+          }
+        },
       }
     );
   }
@@ -1343,7 +1454,7 @@ class RevChatApp {
     const joinRoomFromInput = () => {
       const input = this.root.querySelector('#input-room') as HTMLInputElement | null;
       if (input && input.value.trim()) {
-        void this.switchRoom(input.value.trim(), null);
+        void this.switchRoom(input.value.trim());
       }
     };
     this.root.querySelector('#btn-join-room')?.addEventListener('click', joinRoomFromInput);
@@ -1356,7 +1467,7 @@ class RevChatApp {
       }
     });
     this.root.querySelector('#btn-lobby-room')?.addEventListener('click', () => {
-      void this.switchRoom('LOBBY', null);
+      void this.switchRoom('LOBBY');
     });
     this.root.querySelector('#btn-new-room')?.addEventListener('click', () => {
       void this.switchToRandomRoom();
@@ -1700,12 +1811,29 @@ class RevChatApp {
       this.setMobileDrawerOpen(false);
       this.updatePeersDOM();
       this.updateContextBannerDOM();
-      this.composer.getTextarea()?.focus();
+      this.composer.getTextarea()?.focus({ preventScroll: true });
     });
   }
 
   private bindMessageStreamEvents(): void {
     const stream = this.root.querySelector('#message-stream');
+    const clearOpenToolbars = () => {
+      stream?.querySelectorAll('.msg-row.toolbar-open').forEach((r) => {
+        r.classList.remove('toolbar-open');
+      });
+    };
+
+    stream?.addEventListener(
+      'load',
+      (e) => {
+        const el = e.target as HTMLElement | null;
+        if (el && el.classList.contains('msg-media-img') && this.isAtBottom) {
+          this.scrollToBottom();
+        }
+      },
+      true
+    );
+
     stream?.addEventListener('click', (e) => {
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
@@ -1721,6 +1849,11 @@ class RevChatApp {
         return;
       }
 
+      if (targetEl.closest('#btn-empty-new-room')) {
+        void this.switchToRandomRoom();
+        return;
+      }
+
       const lightboxImg = targetEl.closest('[data-lightbox-url]');
       if (lightboxImg) {
         this.lightboxUrl = lightboxImg.getAttribute('data-lightbox-url') || '';
@@ -1728,6 +1861,15 @@ class RevChatApp {
         this.activeModal = 'lightbox';
         this.renderModal();
         return;
+      }
+
+      if (!targetEl.closest('a[download]')) {
+        const previewEl = targetEl.closest('[data-preview-id]');
+        if (previewEl) {
+          const id = previewEl.getAttribute('data-preview-id') || '';
+          if (id) void this.openFilePreviewModal(id);
+          return;
+        }
       }
 
       const cancelTransferBtn = targetEl.closest('[data-cancel-transfer]');
@@ -1751,6 +1893,7 @@ class RevChatApp {
 
       const deleteBtn = targetEl.closest('[data-delete-id]');
       if (deleteBtn) {
+        clearOpenToolbars();
         const id = deleteBtn.getAttribute('data-delete-id') || '';
         const idx = this.messages.findIndex((m) => m.id === id);
         const target = idx >= 0 ? this.messages[idx] : this.messageMap.get(id);
@@ -1784,6 +1927,7 @@ class RevChatApp {
 
       const reactBtn = targetEl.closest('[data-react-id]');
       if (reactBtn) {
+        clearOpenToolbars();
         const id = reactBtn.getAttribute('data-react-id') || '';
         const emoji = reactBtn.getAttribute('data-react-emoji') || '';
         if (id && emoji) {
@@ -1797,6 +1941,7 @@ class RevChatApp {
 
       const copyBtn = targetEl.closest('[data-copy-id]');
       if (copyBtn) {
+        clearOpenToolbars();
         const id = copyBtn.getAttribute('data-copy-id') || '';
         const target = this.messageMap.get(id);
         if (target) {
@@ -1809,12 +1954,33 @@ class RevChatApp {
 
       const replyBtn = targetEl.closest('[data-reply-id]');
       if (replyBtn) {
+        clearOpenToolbars();
         const id = replyBtn.getAttribute('data-reply-id') || '';
         const senderName = replyBtn.getAttribute('data-reply-sender') || '';
         const text = replyBtn.getAttribute('data-reply-text') || '';
         this.replyTo = { id, senderName, text };
         this.updateContextBannerDOM();
-        this.composer.getTextarea()?.focus();
+        this.composer.getTextarea()?.focus({ preventScroll: true });
+        return;
+      }
+
+      if (!window.matchMedia('(hover: hover)').matches) {
+        if (
+          targetEl.closest(
+            'button, a, video, audio, [data-lightbox-url], [data-preview-id], .reaction-picker, .msg-toolbar'
+          ) ||
+          window.getSelection()?.toString()
+        ) {
+          return;
+        }
+        const row = targetEl.closest('.msg-row:not(.system)') as HTMLElement | null;
+        if (!row || !row.querySelector('.msg-toolbar')) {
+          clearOpenToolbars();
+          return;
+        }
+        const wasOpen = row.classList.contains('toolbar-open');
+        clearOpenToolbars();
+        if (!wasOpen) row.classList.add('toolbar-open');
       }
     });
   }

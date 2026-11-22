@@ -8,7 +8,6 @@ import {
   encryptBytes,
   encryptJson,
   generateSessionIdentity,
-  importRoomKey,
   signText,
   verifyText,
 } from './crypto';
@@ -30,7 +29,6 @@ import {
 import {
   generateUUID,
   normalizeRoomId,
-  sanitizeRoomKey,
 } from './storage';
 import {
   ChatMessage,
@@ -103,8 +101,6 @@ export class P2PEngine {
   private profile: UserProfile;
   private callbacks: P2PEngineCallbacks;
   private roomId: string;
-  private roomKeyStr: string | null;
-  private roomAesKey: CryptoKey | null = null;
 
   private myPeerId: string;
   private identity: SessionIdentity | null = null;
@@ -145,6 +141,10 @@ export class P2PEngine {
   private isScreenShare = false;
   private cameraFacingMode: 'user' | 'environment' = 'user';
   private hasMultipleCameras = false;
+  private micAudioTrack: MediaStreamTrack | null = null;
+  private screenAudioTrack: MediaStreamTrack | null = null;
+  private mixedAudioTrack: MediaStreamTrack | null = null;
+  private screenAudioCtx: AudioContext | null = null;
   private remoteStreams = new Map<string, RemoteCallStream>();
   private remoteStreamCleanups = new Map<string, () => void>();
   private wakeLockSentinel: any = null;
@@ -163,12 +163,10 @@ export class P2PEngine {
   constructor(
     profile: UserProfile,
     initialRoomId: string,
-    initialRoomKey: string | null,
     callbacks: P2PEngineCallbacks
   ) {
     this.profile = profile;
     this.roomId = normalizeRoomId(initialRoomId);
-    this.roomKeyStr = sanitizeRoomKey(initialRoomKey);
     this.callbacks = callbacks;
     this.myPeerId = `${PEER_PREFIX}${sanitizeId(profile.clientId).toLowerCase()}`;
     this.identityReadyP = generateSessionIdentity().catch(() => null);
@@ -177,10 +175,6 @@ export class P2PEngine {
   public async start(): Promise<void> {
     this.identity = await this.identityReadyP;
     if (this.destroyed) return;
-
-    if (this.roomKeyStr) {
-      this.roomAesKey = await importRoomKey(this.roomKeyStr);
-    }
 
     await this.joinActiveRoom();
 
@@ -238,10 +232,9 @@ export class P2PEngine {
     }
   }
 
-  public async switchRoom(newRoomId: string, newRoomKey: string | null): Promise<void> {
+  public async switchRoom(newRoomId: string): Promise<void> {
     const normalized = normalizeRoomId(newRoomId);
-    const cleanKey = sanitizeRoomKey(newRoomKey);
-    if (normalized === this.roomId && cleanKey === this.roomKeyStr) return;
+    if (normalized === this.roomId) return;
 
     this.leaveCall();
     this.broadcastLeaveSync();
@@ -253,8 +246,6 @@ export class P2PEngine {
 
     this.natWarnedThisSession = false;
     this.roomId = normalized;
-    this.roomKeyStr = cleanKey;
-    this.roomAesKey = cleanKey ? await importRoomKey(cleanKey) : null;
     this.remoteStreams.clear();
     this.peers.clear();
     this.transportToLogical.clear();
@@ -381,7 +372,6 @@ export class P2PEngine {
         {
           appId: APP_ID,
           identity: 'none',
-          password: this.roomKeyStr || undefined,
           maxUsers: MAX_PEERS_IN_ROOM,
           maxReceiveBytes: MAX_MEDIA_BYTES + 131_072,
           rtcConfig: this.buildRtcConfig(),
@@ -572,10 +562,6 @@ export class P2PEngine {
                 );
               }, NAT_WARN_GRACE_MS);
             }
-          } else if (err.code === 'decrypt-failed') {
-            this.warnDecryptMismatch(
-              'Peer connection rejected: room key mismatch. Share the full invite link.'
-            );
           }
         })
       );
@@ -755,21 +741,16 @@ export class P2PEngine {
         let verified = false;
 
         if (packet.enc && typeof packet.payload?.cipher === 'string') {
-          const candidates: Array<CryptoKey | null | undefined> =
+          const pairKey =
             packet.payload?.dmTarget === this.myPeerId
-              ? [this.pairwiseKeys.get(packet.senderId), this.roomAesKey]
-              : [this.roomAesKey];
-
-          let decrypted: any = null;
-          for (const candidate of candidates) {
-            if (!candidate) continue;
-            decrypted = await decryptJson<any>(candidate, packet.payload.cipher);
-            if (decrypted) break;
-          }
-
+              ? this.pairwiseKeys.get(packet.senderId)
+              : undefined;
+          const decrypted = pairKey
+            ? await decryptJson<any>(pairKey, packet.payload.cipher)
+            : null;
           if (!decrypted) {
             this.warnDecryptMismatch(
-              'Could not decrypt an incoming E2EE message (room key or passphrase mismatch).'
+              'Could not decrypt an incoming encrypted DM (session key mismatch).'
             );
             break;
           }
@@ -794,7 +775,7 @@ export class P2PEngine {
           );
           if (!verified) break;
         }
-        msg.encrypted = encrypted || Boolean(this.roomAesKey);
+        msg.encrypted = encrypted;
         msg.verified = verified;
 
         this.clearPeerTyping(packet.senderId);
@@ -1047,7 +1028,7 @@ export class P2PEngine {
       targetPeerId: whisperPeer?.peerId,
       targetPeerName: whisperPeer?.nickname,
       ackedBy: [],
-      encrypted: Boolean(this.roomAesKey || whisperPeer),
+      encrypted: Boolean(whisperPeer && this.pairwiseKeys.has(whisperPeer.peerId)),
       verified: true,
       deliveryState: 'sent',
     };
@@ -1073,12 +1054,7 @@ export class P2PEngine {
       `MSG:${msg.id}:${this.myPeerId}:${msg.timestamp}:${msg.text}`
     );
 
-    let encKey: CryptoKey | null = null;
-    if (dmTargetId) {
-      encKey = this.pairwiseKeys.get(dmTargetId) || this.roomAesKey;
-    } else {
-      encKey = this.roomAesKey;
-    }
+    const encKey = dmTargetId ? this.pairwiseKeys.get(dmTargetId) ?? null : null;
 
     let payload: any;
     let enc = false;
@@ -1191,7 +1167,7 @@ export class P2PEngine {
       targetPeerId: meta.targetPeerId,
       targetPeerName: meta.targetPeerName,
       ackedBy: [],
-      encrypted: meta.encrypted || Boolean(this.roomAesKey),
+      encrypted: meta.encrypted,
       attachment: {
         transferId: meta.transferId,
         kind: meta.kind,
@@ -1218,8 +1194,8 @@ export class P2PEngine {
     if (meta.encrypted) {
       const key =
         meta.targetPeerId === this.myPeerId
-          ? this.pairwiseKeys.get(meta.senderLogicalId) || this.roomAesKey
-          : this.roomAesKey;
+          ? this.pairwiseKeys.get(meta.senderLogicalId)
+          : undefined;
       if (!key) {
         this.callbacks.onMediaCanceled(meta.transferId);
         return;
@@ -1284,9 +1260,7 @@ export class P2PEngine {
       `MEDIA:${transferId}:${this.myPeerId}:${safeName}:${rawBuf.byteLength}`
     );
 
-    const encKey = whisperPeer
-      ? this.pairwiseKeys.get(whisperPeer.peerId) || this.roomAesKey
-      : this.roomAesKey;
+    const encKey = whisperPeer ? this.pairwiseKeys.get(whisperPeer.peerId) ?? null : null;
 
     let wireBytes = new Uint8Array(rawBuf);
     let encrypted = false;
@@ -1295,6 +1269,7 @@ export class P2PEngine {
       encrypted = true;
     }
 
+    const activePeers = this.room ? this.room.getPeers() : {};
     const targetTid = whisperPeer ? this.logicalToTransport.get(whisperPeer.peerId) : undefined;
     const hasLocalOnlyPeer = whisperPeer
       ? !targetTid && this.peers.get(whisperPeer.peerId)?.transport === 'local-broadcast'
@@ -1302,8 +1277,8 @@ export class P2PEngine {
           (p) => p.transport === 'local-broadcast' && !this.logicalToTransport.has(p.peerId)
         );
     const hasWebRtcTargets = whisperPeer
-      ? Boolean(targetTid)
-      : this.logicalToTransport.size > 0;
+      ? Boolean(targetTid && targetTid in activePeers)
+      : Object.keys(activePeers).length > 0;
     const willStreamWebRtc = Boolean(this.mediaAction && hasWebRtcTargets);
 
     const msg: ChatMessage = {
@@ -1317,7 +1292,7 @@ export class P2PEngine {
       targetPeerId: whisperPeer?.peerId,
       targetPeerName: whisperPeer?.nickname,
       ackedBy: [],
-      encrypted: encrypted || Boolean(this.roomAesKey),
+      encrypted,
       verified: true,
       deliveryState: willStreamWebRtc ? 'sending' : 'sent',
       attachment: {
@@ -1433,6 +1408,45 @@ export class P2PEngine {
     }
   }
 
+  private teardownScreenAudioMixer(restoreMicToStream: boolean): void {
+    if (this.screenAudioTrack) {
+      try {
+        this.screenAudioTrack.stop();
+      } catch {
+        // ignore
+      }
+      this.screenAudioTrack = null;
+    }
+    if (this.mixedAudioTrack) {
+      if (this.localCallStream) {
+        this.localCallStream.removeTrack(this.mixedAudioTrack);
+      }
+      try {
+        this.mixedAudioTrack.stop();
+      } catch {
+        // ignore
+      }
+      this.mixedAudioTrack = null;
+    }
+    if (this.screenAudioCtx) {
+      try {
+        void this.screenAudioCtx.close();
+      } catch {
+        // ignore
+      }
+      this.screenAudioCtx = null;
+    }
+    if (
+      restoreMicToStream &&
+      this.localCallStream &&
+      this.micAudioTrack &&
+      this.micAudioTrack.readyState === 'live' &&
+      !this.localCallStream.getAudioTracks().includes(this.micAudioTrack)
+    ) {
+      this.localCallStream.addTrack(this.micAudioTrack);
+    }
+  }
+
   public async startCall(options: { video: boolean }): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Microphone / camera access requires HTTPS or localhost.');
@@ -1449,6 +1463,7 @@ export class P2PEngine {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     await this.detectMultipleCameras();
     this.localCallStream = stream;
+    this.micAudioTrack = stream.getAudioTracks()[0] || null;
     this.localHasVideo = options.video;
     this.localAudioMuted = false;
     this.isScreenShare = false;
@@ -1479,8 +1494,12 @@ export class P2PEngine {
   public toggleMute(): boolean {
     if (!this.localCallStream) return false;
     this.localAudioMuted = !this.localAudioMuted;
-    for (const t of this.localCallStream.getAudioTracks()) {
-      t.enabled = !this.localAudioMuted;
+    if (this.micAudioTrack) {
+      this.micAudioTrack.enabled = !this.localAudioMuted;
+    } else {
+      for (const t of this.localCallStream.getAudioTracks()) {
+        t.enabled = !this.localAudioMuted;
+      }
     }
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
@@ -1524,6 +1543,18 @@ export class P2PEngine {
       return this.localHasVideo;
     }
 
+    if (this.isScreenShare) {
+      if (
+        this.mixedAudioTrack &&
+        this.micAudioTrack &&
+        this.micAudioTrack.readyState === 'live' &&
+        this.room
+      ) {
+        await this.room.replaceTrack(this.mixedAudioTrack, this.micAudioTrack).catch(() => {});
+      }
+      this.teardownScreenAudioMixer(true);
+    }
+
     if (existingVideo) {
       this.localCallStream.removeTrack(existingVideo);
       existingVideo.stop();
@@ -1556,23 +1587,109 @@ export class P2PEngine {
     const oldTrack = this.localCallStream.getVideoTracks()[0];
     if (!oldTrack) return;
 
-    const nextFacing = this.cameraFacingMode === 'user' ? 'environment' : 'user';
-    const nextStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: nextFacing },
-    });
-    const newTrack = nextStream.getVideoTracks()[0];
-    if (!this.localCallStream || !newTrack) {
-      for (const t of nextStream.getTracks()) t.stop();
-      return;
-    }
+    const oldSettings = oldTrack.getSettings?.() || {};
+    const oldDeviceId = oldSettings.deviceId || '';
+    const currentFacing: 'user' | 'environment' =
+      oldSettings.facingMode === 'environment' || oldSettings.facingMode === 'user'
+        ? oldSettings.facingMode
+        : this.cameraFacingMode;
+    const nextFacing: 'user' | 'environment' =
+      currentFacing === 'user' ? 'environment' : 'user';
 
-    this.cameraFacingMode = nextFacing;
-    if (this.room) {
-      await this.room.replaceTrack(oldTrack, newTrack);
-    }
+    // Android Camera2 HAL often refuses opening a second camera while the current track is active.
     this.localCallStream.removeTrack(oldTrack);
     oldTrack.stop();
+
+    const tryAcquireNext = async (): Promise<MediaStream | null> => {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: nextFacing } },
+        });
+      } catch {
+        // Fallback to enumerateDevices or ideal facingMode
+      }
+      try {
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
+          (d) => d.kind === 'videoinput'
+        );
+        const others = devices.filter((d) => d.deviceId && d.deviceId !== oldDeviceId);
+        if (others.length > 0) {
+          const wantRegex =
+            nextFacing === 'environment'
+              ? /(back|rear|environment|world|외부|후면)/i
+              : /(front|user|selfie|face|전면)/i;
+          const preferred = others.find((d) => wantRegex.test(d.label || '')) || others[0];
+          return await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: preferred.deviceId } },
+          });
+        }
+      } catch {
+        // Fallback to non-exact facingMode
+      }
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: nextFacing },
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    const nextStream = await tryAcquireNext();
+    const newTrack = nextStream?.getVideoTracks()[0] || null;
+    if (!this.localCallStream || !newTrack) {
+      if (nextStream) {
+        for (const t of nextStream.getTracks()) t.stop();
+      }
+      if (this.localCallStream) {
+        try {
+          const rec = await navigator.mediaDevices.getUserMedia({
+            video: oldDeviceId
+              ? { deviceId: { exact: oldDeviceId } }
+              : { facingMode: currentFacing },
+          });
+          const recTrack = rec.getVideoTracks()[0];
+          if (recTrack && this.localCallStream) {
+            this.localCallStream.addTrack(recTrack);
+            if (this.room) {
+              try {
+                await this.room.replaceTrack(oldTrack, recTrack);
+              } catch {
+                await this.room
+                  .addStream(this.localCallStream, {
+                    metadata: { hasVideo: true, isScreenShare: false },
+                  })
+                  .catch(() => {});
+              }
+            }
+            this.callbacks.onLocalStreamUpdated(
+              this.localCallStream,
+              this.localHasVideo,
+              this.localAudioMuted,
+              false
+            );
+          }
+        } catch {
+          // ignore recovery failure
+        }
+      }
+      throw new Error('Could not switch camera on this device.');
+    }
+
+    const newFacing = newTrack.getSettings?.().facingMode;
+    this.cameraFacingMode =
+      newFacing === 'environment' || newFacing === 'user' ? newFacing : nextFacing;
     this.localCallStream.addTrack(newTrack);
+
+    if (this.room) {
+      try {
+        await this.room.replaceTrack(oldTrack, newTrack);
+      } catch {
+        await this.room.addStream(this.localCallStream, {
+          metadata: { hasVideo: true, isScreenShare: false },
+        });
+      }
+    }
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
       this.localHasVideo,
@@ -1592,11 +1709,74 @@ export class P2PEngine {
 
     const existingVideo = this.localCallStream.getVideoTracks()[0];
     if (!this.isScreenShare) {
-      const disp = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      let disp: MediaStream;
+      try {
+        disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      } catch (err: any) {
+        if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+          throw err;
+        }
+        disp = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      }
+
       const dispTrack = disp.getVideoTracks()[0];
-      if (!dispTrack) return false;
+      const dispAudioTrack = disp.getAudioTracks()[0] || null;
+      if (!dispTrack) {
+        if (dispAudioTrack) {
+          try {
+            dispAudioTrack.stop();
+          } catch {
+            // ignore
+          }
+        }
+        return false;
+      }
+
       this.isScreenShare = true;
       this.localHasVideo = true;
+
+      if (dispAudioTrack) {
+        try {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          const ctx: AudioContext = new AudioCtx();
+          if (ctx.state === 'suspended') {
+            await ctx.resume();
+          }
+          const dest = ctx.createMediaStreamDestination();
+          const micTrack = this.micAudioTrack || this.localCallStream.getAudioTracks()[0] || null;
+          this.micAudioTrack = micTrack;
+
+          if (micTrack && micTrack.readyState === 'live') {
+            const micSrc = ctx.createMediaStreamSource(new MediaStream([micTrack]));
+            micSrc.connect(dest);
+          }
+          const scrSrc = ctx.createMediaStreamSource(new MediaStream([dispAudioTrack]));
+          scrSrc.connect(dest);
+
+          const mixedTrack = dest.stream.getAudioTracks()[0] || null;
+          if (mixedTrack) {
+            this.screenAudioTrack = dispAudioTrack;
+            this.screenAudioCtx = ctx;
+            this.mixedAudioTrack = mixedTrack;
+            if (micTrack && this.room) {
+              await this.room.replaceTrack(micTrack, mixedTrack).catch(() => {});
+            }
+            if (micTrack) {
+              this.localCallStream.removeTrack(micTrack);
+            }
+            this.localCallStream.addTrack(mixedTrack);
+          } else {
+            void ctx.close();
+            dispAudioTrack.stop();
+          }
+        } catch {
+          try {
+            dispAudioTrack.stop();
+          } catch {
+            // ignore
+          }
+        }
+      }
 
       dispTrack.addEventListener('ended', () => {
         if (this.isScreenShare) {
@@ -1631,6 +1811,16 @@ export class P2PEngine {
   private async stopScreenShare(): Promise<void> {
     if (!this.localCallStream) return;
     this.isScreenShare = false;
+    if (
+      this.mixedAudioTrack &&
+      this.micAudioTrack &&
+      this.micAudioTrack.readyState === 'live' &&
+      this.room
+    ) {
+      await this.room.replaceTrack(this.mixedAudioTrack, this.micAudioTrack).catch(() => {});
+    }
+    this.teardownScreenAudioMixer(true);
+
     const track = this.localCallStream.getVideoTracks()[0];
     if (track) {
       this.localCallStream.removeTrack(track);
@@ -1652,6 +1842,15 @@ export class P2PEngine {
   }
 
   public leaveCall(): void {
+    this.teardownScreenAudioMixer(false);
+    if (this.micAudioTrack) {
+      try {
+        this.micAudioTrack.stop();
+      } catch {
+        // ignore
+      }
+      this.micAudioTrack = null;
+    }
     const stream = this.localCallStream;
     if (!stream) return;
     this.localCallStream = null;

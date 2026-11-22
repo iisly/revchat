@@ -1,9 +1,214 @@
 import { MediaKind } from './types';
 
 export { MAX_MEDIA_BYTES } from './security';
-const IMAGE_COMPRESS_THRESHOLD = 1_200_000;
-const MAX_IMAGE_DIM = 1600;
-const MAX_VOICE_SECONDS = 120;
+const IMAGE_COMPRESS_THRESHOLD = 3_000_000;
+const MAX_IMAGE_DIM = 1920;
+export const MAX_VOICE_SECONDS = 180;
+
+const EXT_MIME_MAP: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  jfif: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  ogg: 'audio/ogg',
+  opus: 'audio/ogg',
+  wav: 'audio/wav',
+  aac: 'audio/aac',
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+  json: 'application/json',
+  csv: 'text/csv',
+  tsv: 'text/tab-separated-values',
+  xml: 'application/xml',
+  yaml: 'text/yaml',
+  yml: 'text/yaml',
+  html: 'text/html',
+  htm: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  ts: 'text/typescript',
+  log: 'text/plain',
+};
+
+export type FilePreviewKind = 'none' | 'text' | 'csv' | 'pdf';
+export const MAX_TEXT_PREVIEW_BYTES = 200_000;
+export const MAX_CSV_PREVIEW_ROWS = 200;
+export const MAX_CSV_PREVIEW_COLS = 30;
+
+const TEXT_PREVIEW_MIMES = new Set([
+  'application/json',
+  'application/xml',
+  'application/javascript',
+  'application/typescript',
+  'application/x-yaml',
+  'application/yaml',
+  'application/toml',
+  'application/sql',
+  'application/x-sh',
+]);
+
+const TEXT_PREVIEW_EXTS = new Set([
+  'txt', 'md', 'markdown', 'json', 'jsonc', 'jsonl', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx',
+  'py', 'rb', 'go', 'rs', 'java', 'kt', 'swift', 'c', 'h', 'cpp', 'hpp', 'cs', 'php',
+  'html', 'htm', 'css', 'scss', 'less', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
+  'env', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'log', 'diff', 'patch',
+  'gitignore', 'editorconfig',
+]);
+
+const TEXT_PREVIEW_BASENAMES = new Set([
+  'readme',
+  'license',
+  'makefile',
+  'dockerfile',
+  'changelog',
+  'authors',
+]);
+
+export function inferMimeFromFilename(filename: string): string {
+  const ext = filename.toLowerCase().split('.').pop() || '';
+  return EXT_MIME_MAP[ext] || 'application/octet-stream';
+}
+
+export function classifyFilePreview(mimeType: string, filename = ''): FilePreviewKind {
+  const mime = mimeType.toLowerCase().split(';')[0].trim();
+  const base = filename.toLowerCase().split(/[\\/]/).pop() || '';
+  const ext = base.includes('.') ? base.split('.').pop() || '' : '';
+
+  if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
+  if (mime === 'text/csv' || mime === 'text/tab-separated-values' || ext === 'csv' || ext === 'tsv') {
+    return 'csv';
+  }
+  if (
+    mime.startsWith('text/') ||
+    TEXT_PREVIEW_MIMES.has(mime) ||
+    TEXT_PREVIEW_EXTS.has(ext) ||
+    TEXT_PREVIEW_BASENAMES.has(base)
+  ) {
+    return 'text';
+  }
+  return 'none';
+}
+
+export function parseDelimitedTable(
+  text: string,
+  delimiter: ',' | '\t' = ',',
+  maxRows = MAX_CSV_PREVIEW_ROWS,
+  maxCols = MAX_CSV_PREVIEW_COLS
+): { rows: string[][]; truncated: boolean } {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let truncated = false;
+  let i = 0;
+
+  const clean = text.startsWith('\uFEFF') ? text.slice(1) : text;
+
+  const pushCell = (val: string) => {
+    if (row.length < maxCols) {
+      row.push(val);
+    } else {
+      truncated = true;
+    }
+  };
+
+  while (i < clean.length) {
+    const ch = clean[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (clean[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += ch;
+      i++;
+      continue;
+    }
+
+    if (ch === '"' && field === '') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+
+    if (ch === delimiter) {
+      pushCell(field);
+      field = '';
+      i++;
+      continue;
+    }
+
+    if (ch === '\r' || ch === '\n') {
+      if (ch === '\r' && clean[i + 1] === '\n') {
+        i++;
+      }
+      pushCell(field);
+      field = '';
+      rows.push(row);
+      row = [];
+      i++;
+      if (rows.length >= maxRows) {
+        if (i < clean.length && clean.slice(i).trim() !== '') {
+          truncated = true;
+        }
+        return { rows, truncated };
+      }
+      continue;
+    }
+
+    field += ch;
+    i++;
+  }
+
+  if (field !== '' || row.length > 0) {
+    pushCell(field);
+    if (rows.length < maxRows) {
+      rows.push(row);
+    } else {
+      truncated = true;
+    }
+  }
+
+  while (rows.length > 0 && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') {
+    rows.pop();
+  }
+
+  return { rows, truncated };
+}
+
+export async function readBlobPreviewText(
+  url: string,
+  maxBytes = MAX_TEXT_PREVIEW_BYTES
+): Promise<{ text: string; truncated: boolean; isBinary: boolean }> {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const truncated = blob.size > maxBytes;
+  const slice = truncated ? blob.slice(0, maxBytes) : blob;
+  const text = await slice.text();
+  const isBinary = text.slice(0, 1024).includes('\u0000');
+  return { text, truncated, isBinary };
+}
 
 export function classifyMime(mimeType: string, filename = ''): MediaKind {
   const mime = mimeType.toLowerCase();
@@ -11,7 +216,9 @@ export function classifyMime(mimeType: string, filename = ''): MediaKind {
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';
   const ext = filename.toLowerCase().split('.').pop() || '';
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(ext)) return 'image';
+  if (['jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg', 'heic', 'heif'].includes(ext)) {
+    return 'image';
+  }
   if (['mp4', 'webm', 'mov', 'm4v'].includes(ext)) return 'video';
   if (['mp3', 'm4a', 'ogg', 'wav', 'aac', 'opus'].includes(ext)) return 'audio';
   return 'file';
@@ -30,15 +237,19 @@ export function formatDuration(seconds: number): string {
   return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
-export async function compressImageIfNeeded(file: File): Promise<{ blob: Blob; mimeType: string }> {
-  const mime = file.type || 'image/jpeg';
+export async function compressImageIfNeeded(
+  file: File
+): Promise<{ blob: Blob; mimeType: string; canRenderAsImage: boolean }> {
+  const mime = (file.type || inferMimeFromFilename(file.name) || 'image/jpeg').toLowerCase();
+  const isHeic = mime === 'image/heic' || mime === 'image/heif';
   if (
-    file.size <= IMAGE_COMPRESS_THRESHOLD ||
-    mime === 'image/gif' ||
-    mime === 'image/svg+xml' ||
-    !mime.startsWith('image/')
+    !isHeic &&
+    (file.size <= IMAGE_COMPRESS_THRESHOLD ||
+      mime === 'image/gif' ||
+      mime === 'image/svg+xml' ||
+      !mime.startsWith('image/'))
   ) {
-    return { blob: file, mimeType: mime };
+    return { blob: file, mimeType: mime, canRenderAsImage: true };
   }
 
   try {
@@ -53,7 +264,7 @@ export async function compressImageIfNeeded(file: File): Promise<{ blob: Blob; m
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       bitmap.close();
-      return { blob: file, mimeType: mime };
+      return { blob: file, mimeType: mime, canRenderAsImage: !isHeic };
     }
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
@@ -62,13 +273,13 @@ export async function compressImageIfNeeded(file: File): Promise<{ blob: Blob; m
     const outBlob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob((b) => resolve(b), outMime, 0.82)
     );
-    if (outBlob && outBlob.size < file.size) {
-      return { blob: outBlob, mimeType: outMime };
+    if (outBlob && (isHeic || outBlob.size < file.size)) {
+      return { blob: outBlob, mimeType: outMime, canRenderAsImage: true };
     }
   } catch {
     // Fallback cleanly to original file on unsupported bitmap formats (e.g. HEIC)
   }
-  return { blob: file, mimeType: mime };
+  return { blob: file, mimeType: mime, canRenderAsImage: !isHeic };
 }
 
 /**

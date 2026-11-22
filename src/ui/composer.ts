@@ -1,6 +1,6 @@
 import { ASCII_EMOTE_LIST } from '../commands';
 import { escapeAttr, escapeHtml } from '../markdown';
-import { VoiceRecorder, formatDuration } from '../media';
+import { MAX_VOICE_SECONDS, VoiceRecorder, formatDuration } from '../media';
 import {
   iconArrowLeft,
   iconClose,
@@ -68,6 +68,10 @@ export class ComposerController {
     this.renderPopoverDOM();
   }
 
+  private isTouchDevice(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
+  }
+
   public getTextarea(): HTMLTextAreaElement | null {
     return this.root.querySelector('#composer-input') as HTMLTextAreaElement | null;
   }
@@ -81,10 +85,14 @@ export class ComposerController {
     const after = ta.value.slice(end);
     ta.value = `${before}${snippet}${after}`;
     const cursor = start + snippet.length;
-    ta.setSelectionRange(cursor, cursor);
     this.autoResize();
     this.callbacks.onTypingInput(ta.value);
-    ta.focus();
+    if (!this.isTouchDevice()) {
+      ta.setSelectionRange(cursor, cursor);
+      ta.focus({ preventScroll: true });
+    } else {
+      ta.scrollTop = ta.scrollHeight;
+    }
   }
 
   public autoResize(): void {
@@ -125,7 +133,7 @@ export class ComposerController {
           aria-label="ASCII Emotes"
           aria-expanded="false"
         >${iconSmile(18)}</button>
-        <button type="submit" class="primary send-btn">${iconSend(14)}<span>SEND</span></button>
+        <button type="submit" class="primary composer-tool-btn send-btn" title="Send message" aria-label="Send message">${iconSend(17)}</button>
         <input type="file" id="file-pick-any" multiple hidden />
       </form>
     `;
@@ -141,6 +149,7 @@ export class ComposerController {
       if (this.popoverMode === 'plus') {
         this.closePopovers();
       } else {
+        if (this.isTouchDevice()) this.getTextarea()?.blur();
         if (this.popoverMode === 'voice') this.voiceRecorder.cancel();
         this.popoverMode = 'plus';
         this.plusSubview = 'root';
@@ -153,6 +162,7 @@ export class ComposerController {
       if (this.popoverMode === 'emotes') {
         this.closePopovers();
       } else {
+        if (this.isTouchDevice()) this.getTextarea()?.blur();
         if (this.popoverMode === 'voice') this.voiceRecorder.cancel();
         this.popoverMode = 'emotes';
         this.renderPopoverDOM();
@@ -168,6 +178,9 @@ export class ComposerController {
     });
 
     const ta = this.getTextarea();
+    ta?.addEventListener('focus', () => {
+      if (this.isTouchDevice()) this.closeNonVoicePopovers();
+    });
     ta?.addEventListener('paste', (e) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -209,7 +222,7 @@ export class ComposerController {
           <div class="voice-rec-status">
             <span class="rec-dot"></span>
             <span>REC</span>
-            <code id="voice-rec-timer">${formatDuration(this.voiceSeconds)} / 02:00</code>
+            <code id="voice-rec-timer">${formatDuration(this.voiceSeconds)} / ${formatDuration(MAX_VOICE_SECONDS)}</code>
           </div>
           <div class="voice-rec-actions">
             <button type="button" class="small" id="btn-voice-cancel">CANCEL</button>
@@ -253,7 +266,8 @@ export class ComposerController {
       `;
       slot.querySelector('#btn-popover-close')?.addEventListener('click', () => this.closePopovers());
       slot.querySelectorAll('[data-emote]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           const emote = btn.getAttribute('data-emote') || '';
           this.insertTextAndFocus(`${emote} `);
         });
@@ -290,7 +304,8 @@ export class ComposerController {
       `;
       slot.querySelector('#btn-popover-close')?.addEventListener('click', () => this.closePopovers());
       slot.querySelectorAll('[data-plus]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           const act = btn.getAttribute('data-plus');
           if (act === 'call') {
             this.closePopovers();
@@ -317,24 +332,57 @@ export class ComposerController {
       slot.innerHTML = `
         <div class="composer-popover" id="composer-popover">
           <div class="popover-header">
-            <button type="button" class="small" id="btn-plus-back">${iconArrowLeft(13)}<span>BACK</span></button>
+            <button type="button" class="small icon-btn" id="btn-plus-back" title="Back" aria-label="Back">${iconArrowLeft(14)}</button>
             <span>GAMES</span>
             <button type="button" class="small icon-btn" id="btn-popover-close" aria-label="Close">${iconClose(14)}</button>
           </div>
-          <div class="games-grid">
-            <button type="button" class="game-chip" data-cmd="/coin">COIN</button>
-            <button type="button" class="game-chip" data-cmd="/roll 6">DICE 1–6</button>
-            <button type="button" class="game-chip" data-cmd="/roll 100">DICE 1–100</button>
-            <button type="button" class="game-chip" data-cmd="/rps">RPS (RANDOM)</button>
-            <button type="button" class="game-chip" data-cmd="/rps rock">ROCK</button>
-            <button type="button" class="game-chip" data-cmd="/rps paper">PAPER</button>
-            <button type="button" class="game-chip" data-cmd="/rps scissors">SCISSORS</button>
-            <button type="button" class="game-chip" data-prefill="/pick ">PICK...</button>
-            <button type="button" class="game-chip" data-prefill="/8ball ">8-BALL...</button>
+          <div class="games-hub">
+            <div class="games-row-instant">
+              <div class="game-card">
+                <div class="game-card-head">🪙 COIN</div>
+                <div class="game-seg-row">
+                  <button type="button" class="small" data-cmd="/coin">FLIP</button>
+                </div>
+              </div>
+              <div class="game-card">
+                <div class="game-card-head">🎲 DICE</div>
+                <div class="game-seg-row">
+                  <button type="button" class="small" data-cmd="/roll 6">d6</button>
+                  <button type="button" class="small" data-cmd="/roll 20">d20</button>
+                  <button type="button" class="small" data-cmd="/roll 100">d100</button>
+                </div>
+              </div>
+              <div class="game-card">
+                <div class="game-card-head">✊ RPS</div>
+                <div class="game-seg-row rps-row">
+                  <button type="button" class="small" data-cmd="/rps rock" title="Rock" aria-label="Rock">✊</button>
+                  <button type="button" class="small" data-cmd="/rps paper" title="Paper" aria-label="Paper">✋</button>
+                  <button type="button" class="small" data-cmd="/rps scissors" title="Scissors" aria-label="Scissors">✌️</button>
+                  <button type="button" class="small" data-cmd="/rps" title="Random" aria-label="Random RPS">🎲</button>
+                </div>
+              </div>
+            </div>
+            <div class="games-row-inputs">
+              <div class="game-card">
+                <div class="game-card-head">🎯 PICK</div>
+                <div class="game-input-row">
+                  <input type="text" id="game-pick-input" placeholder="Pizza, Sushi, Ramen" autocomplete="off" />
+                  <button type="button" class="small primary" id="btn-game-pick-go">GO</button>
+                </div>
+              </div>
+              <div class="game-card">
+                <div class="game-card-head">🎱 8-BALL</div>
+                <div class="game-input-row">
+                  <input type="text" id="game-8ball-input" placeholder="Ask a yes/no question..." autocomplete="off" />
+                  <button type="button" class="small primary" id="btn-game-8ball-go">ASK</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       `;
-      slot.querySelector('#btn-plus-back')?.addEventListener('click', () => {
+      slot.querySelector('#btn-plus-back')?.addEventListener('click', (e) => {
+        e.stopPropagation();
         this.plusSubview = 'root';
         this.renderPopoverDOM();
       });
@@ -346,17 +394,50 @@ export class ComposerController {
           if (cmd) this.callbacks.onRunQuickCommand(cmd);
         });
       });
-      slot.querySelectorAll('[data-prefill]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const prefill = btn.getAttribute('data-prefill') || '';
-          this.closePopovers();
-          const ta = this.getTextarea();
-          if (ta) {
-            ta.value = prefill;
-            this.autoResize();
-            ta.focus();
-          }
-        });
+
+      const pickInput = slot.querySelector('#game-pick-input') as HTMLInputElement | null;
+      const runPickFromInput = () => {
+        const val = (pickInput?.value || '').trim();
+        const items = (val.includes(',') ? val.split(',') : val.split(/\s+/))
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (items.length < 2) {
+          this.callbacks.onToast('Enter at least 2 options (comma or space separated).');
+          pickInput?.focus();
+          return;
+        }
+        this.closePopovers();
+        this.callbacks.onRunQuickCommand(`/pick ${val}`);
+      };
+      slot.querySelector('#btn-game-pick-go')?.addEventListener('click', runPickFromInput);
+      pickInput?.addEventListener('keydown', (e) => {
+        const ke = e as KeyboardEvent;
+        if (ke.isComposing || ke.keyCode === 229) return;
+        if (ke.key === 'Enter') {
+          e.preventDefault();
+          runPickFromInput();
+        }
+      });
+
+      const eightInput = slot.querySelector('#game-8ball-input') as HTMLInputElement | null;
+      const runEightBallFromInput = () => {
+        const val = (eightInput?.value || '').trim();
+        if (!val) {
+          this.callbacks.onToast('Type a question for the 8-Ball.');
+          eightInput?.focus();
+          return;
+        }
+        this.closePopovers();
+        this.callbacks.onRunQuickCommand(`/8ball ${val}`);
+      };
+      slot.querySelector('#btn-game-8ball-go')?.addEventListener('click', runEightBallFromInput);
+      eightInput?.addEventListener('keydown', (e) => {
+        const ke = e as KeyboardEvent;
+        if (ke.isComposing || ke.keyCode === 229) return;
+        if (ke.key === 'Enter') {
+          e.preventDefault();
+          runEightBallFromInput();
+        }
       });
     }
   }
@@ -371,7 +452,7 @@ export class ComposerController {
         (sec) => {
           this.voiceSeconds = sec;
           const timerEl = this.root.querySelector('#voice-rec-timer');
-          if (timerEl) timerEl.textContent = `${formatDuration(sec)} / 02:00`;
+          if (timerEl) timerEl.textContent = `${formatDuration(sec)} / ${formatDuration(MAX_VOICE_SECONDS)}`;
         },
         (autoResult) => {
           this.popoverMode = 'none';

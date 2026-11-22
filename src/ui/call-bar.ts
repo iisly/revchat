@@ -354,6 +354,10 @@ export class CallDockController {
     const renderKey = [
       'active',
       localStream.id,
+      localStream
+        .getVideoTracks()
+        .map((t) => t.id)
+        .join(','),
       myNickname,
       localVideoEnabled,
       isScreenShare,
@@ -364,7 +368,10 @@ export class CallDockController {
       remoteStreams
         .map(
           (r) =>
-            `${r.peerId}:${r.nickname}:${r.stream.id}:${r.hasVideo ? 1 : 0}:${r.isScreenShare ? 1 : 0}`
+            `${r.peerId}:${r.nickname}:${r.stream.id}:${r.stream
+              .getVideoTracks()
+              .map((t) => t.id)
+              .join(',')}:${r.hasVideo ? 1 : 0}:${r.isScreenShare ? 1 : 0}`
         )
         .join('|'),
     ].join(';');
@@ -485,8 +492,8 @@ export class CallDockController {
               <button type="button" class="small" id="btn-call-exit-theater">${iconMinimize(14)}<span>EXIT</span></button>
             `
                 : hasAnyVideo
-                ? `<button type="button" class="small" id="btn-call-collapse">${
-                    this.stageCollapsed ? `${iconEye(14)}<span>VIDEO</span>` : `${iconEyeOff(14)}<span>HIDE</span>`
+                ? `<button type="button" class="small" id="btn-call-collapse" title="${this.stageCollapsed ? 'Show video' : 'Hide video'}" aria-label="${this.stageCollapsed ? 'Show video' : 'Hide video'}">${
+                    this.stageCollapsed ? `${iconEye(14)}<span>SHOW</span>` : `${iconEyeOff(14)}<span>HIDE</span>`
                   }</button>`
                 : ''
             }

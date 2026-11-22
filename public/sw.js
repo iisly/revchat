@@ -1,4 +1,4 @@
-const SHELL_CACHE = 'revchat-shell-v4';
+const SHELL_CACHE = 'revchat-shell-v5';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

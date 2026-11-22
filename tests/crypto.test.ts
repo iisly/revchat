@@ -6,16 +6,15 @@ import {
   encryptBytes,
   encryptJson,
   generateSessionIdentity,
-  importRoomKey,
   signText,
   verifyText,
 } from '../src/crypto';
-import { generateRoomKey } from '../src/storage';
 
 describe('crypto module', () => {
-  it('encrypts and decrypts binary payloads with room key', async () => {
-    const keyStr = generateRoomKey();
-    const key = await importRoomKey(keyStr);
+  it('encrypts and decrypts binary payloads with pairwise AES-GCM key and rejects tampered bytes', async () => {
+    const alice = await generateSessionIdentity();
+    const bob = await generateSessionIdentity();
+    const key = await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, bob.ecdhPubB64);
     expect(key).not.toBeNull();
 
     const raw = new TextEncoder().encode('hello p2p e2ee binary world');
@@ -32,20 +31,25 @@ describe('crypto module', () => {
     expect(await decryptBytes(key!, tampered)).toBeNull();
   });
 
-  it('rejects short or malformed room keys and short ciphertexts', async () => {
-    expect(await importRoomKey('short')).toBeNull();
-    const key = await importRoomKey(generateRoomKey());
+  it('rejects malformed ECDH public keys and short ciphertexts', async () => {
+    const alice = await generateSessionIdentity();
+    const bob = await generateSessionIdentity();
+    expect(await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, 'invalid')).toBeNull();
+    const key = await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, bob.ecdhPubB64);
     expect(await decryptBytes(key!, new Uint8Array([1, 2, 3]))).toBeNull();
   });
 
-  it('encrypts and decrypts JSON objects and rejects wrong keys', async () => {
-    const key1 = await importRoomKey(generateRoomKey());
-    const key2 = await importRoomKey(generateRoomKey());
+  it('encrypts and decrypts JSON objects and rejects wrong pairwise keys', async () => {
+    const alice = await generateSessionIdentity();
+    const bob = await generateSessionIdentity();
+    const charlie = await generateSessionIdentity();
+    const keyAB = await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, bob.ecdhPubB64);
+    const keyAC = await derivePairwiseAesKey(alice.ecdhKeyPair.privateKey, charlie.ecdhPubB64);
     const payload = { id: 'm1', text: 'secret', n: 42 };
 
-    const encoded = await encryptJson(key1!, payload);
-    expect(await decryptJson<typeof payload>(key1!, encoded)).toEqual(payload);
-    expect(await decryptJson<typeof payload>(key2!, encoded)).toBeNull();
+    const encoded = await encryptJson(keyAB!, payload);
+    expect(await decryptJson<typeof payload>(keyAB!, encoded)).toEqual(payload);
+    expect(await decryptJson<typeof payload>(keyAC!, encoded)).toBeNull();
   });
 
   it('signs and verifies messages with ECDSA P-256 and detects tampering', async () => {

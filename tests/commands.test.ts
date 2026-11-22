@@ -58,25 +58,25 @@ describe('commands module', () => {
   });
 
   it('executes original mini-games faithfully', () => {
-    expect(runCoinFlip('Bob').text).toMatch(/^🪙 Bob flipped a coin → (HEADS|TAILS)!$/);
+    expect(runCoinFlip('Bob').text).toMatch(/^🪙 COIN · (HEADS|TAILS)$/);
     expect(runCoinFlip('Bob', 'extra').error).toBe('Usage: /coin');
 
-    expect(runDiceRoll('Bob').text).toMatch(/^🎲 Bob rolled [1-6] \(1-6\)$/);
-    expect(runDiceRoll('Bob', '100').text).toContain('(1-100)');
+    expect(runDiceRoll('Bob').text).toMatch(/^🎲 DICE d6 · [1-6]$/);
+    expect(runDiceRoll('Bob', '100').text).toMatch(/^🎲 DICE d100 · \d+$/);
     expect(runDiceRoll('Bob', '1').error).toBe('Usage: /roll [max]');
     expect(runDiceRoll('Bob', 'abc').error).toBe('Usage: /roll [max]');
 
     expect(runPick('Bob', 'onlyone').error).toBe('Usage: /pick option1, option2, ...');
     const pickRes = runPick('Bob', 'ice cream, fried chicken');
-    expect(pickRes.text).toMatch(/^🎯 Bob picked: (ice cream|fried chicken) \(from ice cream, fried chicken\)$/);
+    expect(pickRes.text).toMatch(/^🎯 PICK · (ice cream|fried chicken) \(ice cream, fried chicken\)$/);
 
-    expect(runRps('Bob').text).toMatch(/^🎲 Bob randomly threw (✊ ROCK|✋ PAPER|✌️ SCISSORS)!$/);
-    expect(runRps('Bob', 'r').text).toBe('Bob threw ✊ ROCK!');
-    expect(runRps('Bob', 'paper').text).toBe('Bob threw ✋ PAPER!');
+    expect(runRps('Bob').text).toMatch(/^🎲 RPS · (✊ ROCK|✋ PAPER|✌️ SCISSORS)$/);
+    expect(runRps('Bob', 'r').text).toBe('✊ RPS · ROCK');
+    expect(runRps('Bob', 'paper').text).toBe('✋ RPS · PAPER');
     expect(runRps('Bob', 'invalid').error).toBe('Usage: /rps [r|p|s]');
 
     expect(runEightBall('Bob', '').error).toBe('Usage: /8ball <question>');
-    expect(runEightBall('Bob', 'Will it work?').text).toMatch(/^🎱 Q: Will it work\? → .+/);
+    expect(runEightBall('Bob', 'Will it work?').text).toMatch(/^🎱 8-BALL · Will it work\? → .+/);
   });
 
   it('parses and clamps numeric text sizes consistently', () => {

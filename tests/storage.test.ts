@@ -3,7 +3,6 @@ import {
   buildRoomUrl,
   createSessionProfile,
   generateRoomCode,
-  generateRoomKey,
   normalizeRoomId,
   parseRoomFromUrl,
   saveSessionProfile,
@@ -24,31 +23,20 @@ describe('storage & URL routing module', () => {
   });
 
   it('builds URL with hash fragment and strips legacy query parameters', () => {
-    const key = generateRoomKey();
-    const url = buildRoomUrl('https://iisly.github.io/revchat/?room=OLD&peer=XYZ', 'room-777', key);
+    const url = buildRoomUrl('https://iisly.github.io/revchat/?room=OLD&peer=XYZ', 'room-777');
     expect(url).not.toContain('?room=');
     expect(url).not.toContain('peer=');
-    expect(url).toContain(`#room=ROOM-777&k=${key}`);
+    expect(url).not.toContain('&k=');
+    expect(url).toContain('#room=ROOM-777');
 
-    const parsed = parseRoomFromUrl(url);
-    expect(parsed.roomId).toBe('ROOM-777');
-    expect(parsed.roomKey).toBe(key);
+    expect(parseRoomFromUrl(url)).toBe('ROOM-777');
   });
 
-  it('falls back cleanly to legacy query URLs and defaults to LOBBY', () => {
-    expect(parseRoomFromUrl('https://iisly.github.io/revchat/?room=devchat')).toEqual({
-      roomId: 'DEVCHAT',
-      roomKey: null,
-    });
-    expect(parseRoomFromUrl('https://iisly.github.io/revchat/')).toEqual({
-      roomId: 'LOBBY',
-      roomKey: null,
-    });
-  });
-
-  it('drops invalid short fragment keys', () => {
-    const parsed = parseRoomFromUrl('https://iisly.github.io/revchat/#room=TEST&k=short');
-    expect(parsed).toEqual({ roomId: 'TEST', roomKey: null });
+  it('parses bare hashes, legacy query/key URLs, and defaults to LOBBY', () => {
+    expect(parseRoomFromUrl('https://iisly.github.io/revchat/?room=devchat')).toBe('DEVCHAT');
+    expect(parseRoomFromUrl('https://iisly.github.io/revchat/#dev-room')).toBe('DEV-ROOM');
+    expect(parseRoomFromUrl('https://iisly.github.io/revchat/#room=TEST&k=oldkey')).toBe('TEST');
+    expect(parseRoomFromUrl('https://iisly.github.io/revchat/')).toBe('LOBBY');
   });
 
   it('reuses clientId on reload but issues a fresh clientId on new/duplicated tabs', () => {
@@ -65,7 +53,7 @@ describe('storage & URL routing module', () => {
     };
 
     const p1 = createSessionProfile();
-    expect(lMap.size).toBe(0);
+    expect(lMap.size).toBe(1);
     expect(p1.nickname).toBe(p1.clientId.toUpperCase());
     expect(p1.nickname).toMatch(/^[2-9A-HJ-NP-Z]{6}$/);
     expect(p1.fontSize).toBe(16);
@@ -82,13 +70,13 @@ describe('storage & URL routing module', () => {
     expect(reloaded.nickname).toBe('CustomNick');
     expect(reloaded.soundMuted).toBe(true);
 
-    // Legacy 'l' string fontSize migrates cleanly to 20px
+    // Out-of-range fontSize clamps cleanly to MAX_FONT_SIZE (22px)
     const storedKey = Array.from(sMap.keys())[0];
-    const legacy = JSON.parse(sMap.get(storedKey)!);
-    legacy.fontSize = 'l';
-    sMap.set(storedKey, JSON.stringify(legacy));
-    const migrated = createSessionProfile();
-    expect(migrated.fontSize).toBe(20);
+    const modified = JSON.parse(sMap.get(storedKey)!);
+    modified.fontSize = 99;
+    sMap.set(storedKey, JSON.stringify(modified));
+    const clamped = createSessionProfile();
+    expect(clamped.fontSize).toBe(22);
 
     // Simulated duplicated/new tab navigation: issues distinct clientId so tabs don't collide
     navSpy.mockReturnValue([{ type: 'navigate' } as any]);

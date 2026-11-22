@@ -187,6 +187,38 @@ export function iconArrowLeft(size = 13): string {
   return svg(size, '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>');
 }
 
+export function iconArrowDown(size = 16): string {
+  return svg(size, '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>');
+}
+
+export function iconSmilePlus(size = 14): string {
+  return svg(
+    size,
+    '<path d="M21 12a9 9 0 1 1-9-9"/><path d="M8.5 14.5a4 4 0 0 0 7 0"/><line x1="9" y1="9.5" x2="9.01" y2="9.5"/><line x1="15" y1="9.5" x2="15.01" y2="9.5"/><line x1="18.5" y1="3" x2="18.5" y2="8"/><line x1="16" y1="5.5" x2="21" y2="5.5"/>'
+  );
+}
+
+export function iconCopy(size = 14): string {
+  return svg(
+    size,
+    '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
+  );
+}
+
+export function iconReply(size = 14): string {
+  return svg(
+    size,
+    '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'
+  );
+}
+
+export function iconTrash(size = 14): string {
+  return svg(
+    size,
+    '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>'
+  );
+}
+
 export const REVCHAT_ASCII_BANNER = `  ____ _____ _   _  ____ _   _    _  _____ 
  |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
  | |_) |  _| | | | | |   | |_| | / _ \\ | |  

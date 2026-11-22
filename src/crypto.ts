@@ -28,22 +28,6 @@ function toArrayBuffer(view: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-export async function importRoomKey(base64urlKey: string): Promise<CryptoKey | null> {
-  try {
-    const raw = base64ToBytes(base64urlKey);
-    if (raw.byteLength !== 32 && raw.byteLength !== 16) return null;
-    return await globalThis.crypto.subtle.importKey(
-      'raw',
-      toArrayBuffer(raw),
-      { name: 'AES-GCM', length: raw.byteLength * 8 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-  } catch {
-    return null;
-  }
-}
-
 export async function encryptBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array> {
   const iv = new Uint8Array(12);
   globalThis.crypto.getRandomValues(iv);

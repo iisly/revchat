@@ -154,15 +154,15 @@ export interface GameCommandResult {
   error?: string;
 }
 
-export function runCoinFlip(nick: string, argStr = ''): GameCommandResult {
+export function runCoinFlip(_nick: string, argStr = ''): GameCommandResult {
   if (argStr.trim()) {
     return { error: 'Usage: /coin' };
   }
   const side = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
-  return { text: `🪙 ${nick} flipped a coin → ${side}!` };
+  return { text: `🪙 COIN · ${side}` };
 }
 
-export function runDiceRoll(nick: string, argStr = ''): GameCommandResult {
+export function runDiceRoll(_nick: string, argStr = ''): GameCommandResult {
   let max = 6;
   const trimmed = argStr.trim();
   if (trimmed) {
@@ -173,10 +173,10 @@ export function runDiceRoll(nick: string, argStr = ''): GameCommandResult {
     max = Math.min(1_000_000, parsed);
   }
   const val = Math.floor(Math.random() * max) + 1;
-  return { text: `🎲 ${nick} rolled ${val} (1-${max})` };
+  return { text: `🎲 DICE d${max} · ${val}` };
 }
 
-export function runPick(nick: string, argStr: string): GameCommandResult {
+export function runPick(_nick: string, argStr: string): GameCommandResult {
   const clean = argStr.trim();
   if (!clean) {
     return { error: 'Usage: /pick option1, option2, ...' };
@@ -188,25 +188,25 @@ export function runPick(nick: string, argStr: string): GameCommandResult {
     return { error: 'Usage: /pick option1, option2, ...' };
   }
   const chosen = items[Math.floor(Math.random() * items.length)];
-  return { text: `🎯 ${nick} picked: ${chosen} (from ${items.join(', ')})` };
+  return { text: `🎯 PICK · ${chosen} (${items.join(', ')})` };
 }
 
-export function runRps(nick: string, argStr = ''): GameCommandResult {
+export function runRps(_nick: string, argStr = ''): GameCommandResult {
   const hands = ['✊ ROCK', '✋ PAPER', '✌️ SCISSORS'];
   const trimmed = argStr.trim();
   if (!trimmed) {
     const pick = hands[Math.floor(Math.random() * hands.length)];
-    return { text: `🎲 ${nick} randomly threw ${pick}!` };
+    return { text: `🎲 RPS · ${pick}` };
   }
   const choice = trimmed.toLowerCase();
   let pick = '';
-  if (choice === 'r' || choice === 'rock') pick = hands[0];
-  else if (choice === 'p' || choice === 'paper') pick = hands[1];
-  else if (choice === 's' || choice === 'scissors') pick = hands[2];
+  if (choice === 'r' || choice === 'rock') pick = '✊ RPS · ROCK';
+  else if (choice === 'p' || choice === 'paper') pick = '✋ RPS · PAPER';
+  else if (choice === 's' || choice === 'scissors') pick = '✌️ RPS · SCISSORS';
   else {
     return { error: 'Usage: /rps [r|p|s]' };
   }
-  return { text: `${nick} threw ${pick}!` };
+  return { text: pick };
 }
 
 export function runEightBall(_nick: string, argStr: string): GameCommandResult {
@@ -215,5 +215,5 @@ export function runEightBall(_nick: string, argStr: string): GameCommandResult {
     return { error: 'Usage: /8ball <question>' };
   }
   const ans = EIGHT_BALL_ANSWERS[Math.floor(Math.random() * EIGHT_BALL_ANSWERS.length)];
-  return { text: `🎱 Q: ${q} → ${ans}` };
+  return { text: `🎱 8-BALL · ${q} → ${ans}` };
 }

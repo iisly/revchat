@@ -1,8 +1,19 @@
 import { REACTION_EMOJIS } from '../commands';
 import { escapeAttr, escapeHtml, formatMessageBody } from '../markdown';
-import { formatDuration, formatFileSize } from '../media';
+import { classifyFilePreview, formatFileSize } from '../media';
 import { ChatMessage } from '../types';
-import { REVCHAT_ASCII_BANNER, iconDownload, iconMic, iconPaperclip, iconShare } from './icons';
+import {
+  REVCHAT_ASCII_BANNER,
+  iconCopy,
+  iconDownload,
+  iconEye,
+  iconMic,
+  iconPaperclip,
+  iconReply,
+  iconShare,
+  iconSmilePlus,
+  iconTrash,
+} from './icons';
 
 const GROUP_WINDOW_MS = 180_000;
 
@@ -42,6 +53,39 @@ function renderAttachmentHtml(m: ChatMessage): string {
   if (att.status === 'canceled') {
     return `<div class="msg-media-status muted">Transfer canceled: ${safeName}</div>`;
   }
+
+  if (att.kind === 'image' && att.url) {
+    const safeUrl = escapeAttr(att.url);
+    const pct = Math.max(0, Math.min(100, att.progress ?? 0));
+    let extra = '';
+    if (att.status === 'sending') {
+      extra = `
+        <div class="msg-media-progress compact" data-transfer-id="${escapeAttr(att.transferId)}">
+          <div class="msg-media-prog-top">
+            <span>Sending <b>${safeName}</b> (${sizeLabel})</span>
+            <span class="prog-pct">${pct}%</span>
+          </div>
+          <div class="msg-prog-track"><div class="msg-prog-fill" style="width:${pct}%;"></div></div>
+          <button type="button" class="small" data-cancel-transfer="${escapeAttr(att.transferId)}">CANCEL</button>
+        </div>
+      `;
+    } else if (att.status === 'error') {
+      extra = `<div class="msg-media-status err">Transfer failed</div>`;
+    }
+    return `
+      <div class="msg-media-box">
+        <img
+          src="${safeUrl}"
+          alt="${safeAttrName}"
+          class="msg-media-img"
+          data-lightbox-url="${safeUrl}"
+          data-lightbox-name="${safeAttrName}"
+        />
+        ${extra}
+      </div>
+    `;
+  }
+
   if (att.status === 'error') {
     return `<div class="msg-media-status err">Transfer failed: ${safeName}</div>`;
   }
@@ -64,21 +108,6 @@ function renderAttachmentHtml(m: ChatMessage): string {
   if (!att.url) return '';
   const safeUrl = escapeAttr(att.url);
 
-  if (att.kind === 'image') {
-    return `
-      <div class="msg-media-box">
-        <img
-          src="${safeUrl}"
-          alt="${safeAttrName}"
-          class="msg-media-img"
-          data-lightbox-url="${safeUrl}"
-          data-lightbox-name="${safeAttrName}"
-          loading="lazy"
-        />
-      </div>
-    `;
-  }
-
   if (att.kind === 'video') {
     return `
       <div class="msg-media-box">
@@ -93,7 +122,23 @@ function renderAttachmentHtml(m: ChatMessage): string {
       <div class="msg-voice-card">
         <span class="voice-tag" aria-label="Voice message">${iconMic(14)}</span>
         <audio src="${safeUrl}" controls preload="metadata"></audio>
-        ${att.durationSec ? `<span class="voice-dur">${formatDuration(att.durationSec)}</span>` : ''}
+      </div>
+    `;
+  }
+
+  const previewKind = classifyFilePreview(att.mimeType, att.name);
+  if (previewKind !== 'none') {
+    return `
+      <div class="msg-file-card previewable" data-preview-id="${escapeAttr(m.id)}">
+        <span class="file-tag" aria-label="File attachment">${iconPaperclip(14)}</span>
+        <span class="file-meta">
+          <b>${safeName}</b>
+          <span>${sizeLabel}</span>
+        </span>
+        <span class="file-card-actions">
+          <button type="button" class="small file-action-btn" data-preview-id="${escapeAttr(m.id)}" title="Preview ${safeAttrName}" aria-label="Preview">${iconEye(13)}<span>VIEW</span></button>
+          <a class="btn small file-action-btn" href="${safeUrl}" download="${safeAttrName}" title="Download ${safeAttrName}" aria-label="Save">${iconDownload(13)}<span>SAVE</span></a>
+        </span>
       </div>
     `;
   }
@@ -108,6 +153,42 @@ function renderAttachmentHtml(m: ChatMessage): string {
       <span class="file-dl-btn">${iconDownload(13)}<span>SAVE</span></span>
     </a>
   `;
+}
+
+function renderGameCardHtml(icon: string, tag: string, val: string, sub?: string): string {
+  return `
+    <div class="msg-game-card">
+      <span class="game-res-icon" aria-hidden="true">${icon}</span>
+      <span class="game-res-tag">${escapeHtml(tag)}</span>
+      <span class="game-res-sep" aria-hidden="true"></span>
+      <span class="game-res-content">
+        <span class="game-res-val">${escapeHtml(val)}</span>
+        ${sub ? `<span class="game-res-sub">${escapeHtml(sub)}</span>` : ''}
+      </span>
+    </div>
+  `;
+}
+
+function renderGameResultHtml(text: string): string | null {
+  let m = text.match(/^🪙 COIN · (HEADS|TAILS)$/);
+  if (m) return renderGameCardHtml('🪙', 'COIN', m[1]);
+
+  m = text.match(/^🎲 DICE (d\d+) · (\d+)$/);
+  if (m) return renderGameCardHtml('🎲', m[1], m[2]);
+
+  m = text.match(/^🎲 RPS · (✊|✋|✌️) (ROCK|PAPER|SCISSORS)$/);
+  if (m) return renderGameCardHtml(m[1], 'RPS', m[2], 'RANDOM');
+
+  m = text.match(/^(✊|✋|✌️) RPS · (ROCK|PAPER|SCISSORS)$/);
+  if (m) return renderGameCardHtml(m[1], 'RPS', m[2]);
+
+  m = text.match(/^🎯 PICK · (.+) \((.+)\)$/);
+  if (m) return renderGameCardHtml('🎯', 'PICK', m[1], `from ${m[2]}`);
+
+  m = text.match(/^🎱 8-BALL · (.+) → (.+)$/);
+  if (m) return renderGameCardHtml('🎱', '8-BALL', m[2], m[1]);
+
+  return null;
 }
 
 function renderReactionsHtml(m: ChatMessage, myPeerId: string): string {
@@ -167,10 +248,10 @@ export function renderSingleMessageHtml(
     ? ''
     : `
       <span class="msg-actions">
-        <button type="button" class="msg-action-link" data-react-open="${escapeAttr(m.id)}" title="React">+</button>
+        <button type="button" class="msg-action-link" data-react-open="${escapeAttr(m.id)}" title="React" aria-label="React">${iconSmilePlus(14)}</button>
         ${
           m.text
-            ? `<button type="button" class="msg-action-link" data-copy-id="${escapeAttr(m.id)}" title="Copy">copy</button>`
+            ? `<button type="button" class="msg-action-link" data-copy-id="${escapeAttr(m.id)}" title="Copy" aria-label="Copy">${iconCopy(14)}</button>`
             : ''
         }
         <button
@@ -180,10 +261,11 @@ export function renderSingleMessageHtml(
           data-reply-sender="${escapeAttr(m.senderName)}"
           data-reply-text="${escapeAttr((m.text || m.attachment?.name || 'attachment').slice(0, 80))}"
           title="Reply"
-        >reply</button>
+          aria-label="Reply"
+        >${iconReply(14)}</button>
         ${
           isSelf
-            ? `<button type="button" class="msg-action-link danger-link" data-delete-id="${escapeAttr(m.id)}" title="Delete">del</button>`
+            ? `<button type="button" class="msg-action-link danger-link" data-delete-id="${escapeAttr(m.id)}" title="Delete" aria-label="Delete">${iconTrash(14)}</button>`
             : ''
         }
       </span>
@@ -193,7 +275,12 @@ export function renderSingleMessageHtml(
     ? `<div class="msg-deleted">Message deleted</div>`
     : `
       ${renderAttachmentHtml(m)}
-      ${m.text ? `<div class="msg-body">${formatMessageBody(m.text, ctx.myNickname)}</div>` : ''}
+      ${
+        m.text
+          ? (renderGameResultHtml(m.text) ??
+            `<div class="msg-body">${formatMessageBody(m.text, ctx.myNickname)}</div>`)
+          : ''
+      }
     `;
 
   return `
@@ -230,6 +317,7 @@ export function renderSingleMessageHtml(
 }
 
 export function renderEmptyStateHtml(ctx: MessageRenderContext): string {
+  const isLobby = ctx.roomId === 'LOBBY';
   return `
     <div class="empty-state">
       <pre class="ascii-banner">
@@ -237,9 +325,14 @@ ${REVCHAT_ASCII_BANNER}</pre>
       <div class="empty-header">#${escapeHtml(ctx.roomId)}</div>
       <div class="empty-actions">
         <button type="button" class="small primary" id="btn-empty-invite">${iconShare(14)}<span>INVITE</span></button>
+        ${isLobby ? `<button type="button" class="small" id="btn-empty-new-room">NEW ROOM</button>` : ''}
       </div>
       <div class="empty-hint">
-        Share the invite link or enter the same room code to start talking. Type <code>/help</code> anytime.
+        ${
+          isLobby
+            ? 'Public lobby — share the invite link or create a private room. Messages are sent live to online peers only and never saved.'
+            : 'Share the invite link or room code to start talking. Messages are sent live to online peers only and never saved.'
+        }
       </div>
     </div>
   `;
