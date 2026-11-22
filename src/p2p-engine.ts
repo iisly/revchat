@@ -57,6 +57,7 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
 export interface P2PEngineCallbacks {
@@ -244,13 +245,16 @@ export class P2PEngine {
 
     this.leaveCall();
     this.broadcastLeaveSync();
+    for (const ctrl of this.activeUploadAborts.values()) {
+      ctrl.abort();
+    }
+    this.activeUploadAborts.clear();
     await this.teardownRoom();
 
     this.natWarnedThisSession = false;
     this.roomId = normalized;
     this.roomKeyStr = cleanKey;
     this.roomAesKey = cleanKey ? await importRoomKey(cleanKey) : null;
-    this.clearRemoteStreamCleanups();
     this.remoteStreams.clear();
     this.peers.clear();
     this.transportToLogical.clear();
@@ -983,7 +987,6 @@ export class P2PEngine {
     if (existing) {
       existing.nickname = safeNick || existing.nickname;
       existing.lastSeenAt = now;
-      existing.state = 'connected';
       if (transport === 'trystero-mesh') {
         existing.transport = transport;
       } else if (existing.iceRoute === 'unknown') {
@@ -1011,7 +1014,6 @@ export class P2PEngine {
         peerId,
         nickname: safeNick || peerId.slice(-6),
         transport,
-        state: 'connected',
         rttMs: transport === 'local-broadcast' ? 1 : null,
         iceRoute: transport === 'local-broadcast' ? 'local' : 'unknown',
         signPubKey,
@@ -1019,7 +1021,6 @@ export class P2PEngine {
         inCall: Boolean(helloData?.inCall),
         hasVideo: Boolean(helloData?.hasVideo),
         isScreenShare: Boolean(helloData?.isScreenShare),
-        connectedAt: now,
         lastSeenAt: now,
       });
       this.callbacks.onSystemLog(`${safeNick || peerId} joined.`);

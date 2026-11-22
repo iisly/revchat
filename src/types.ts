@@ -1,7 +1,5 @@
 export type ConnectionTransport = 'trystero-mesh' | 'local-broadcast';
 
-export type PeerConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
-
 export type IceRouteType = 'direct' | 'relay' | 'local' | 'unknown';
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'file';
@@ -22,7 +20,6 @@ export interface PeerInfo {
   peerId: string;
   nickname: string;
   transport: ConnectionTransport;
-  state: PeerConnectionState;
   rttMs: number | null;
   iceRoute: IceRouteType;
   signPubKey?: string;
@@ -30,7 +27,6 @@ export interface PeerInfo {
   inCall?: boolean;
   hasVideo?: boolean;
   isScreenShare?: boolean;
-  connectedAt: number;
   lastSeenAt: number;
 }
 

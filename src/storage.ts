@@ -1,7 +1,8 @@
 import { DEFAULT_FONT_SIZE, clampFontSize } from './commands';
 import { UserProfile } from './types';
 
-const SESSION_PROFILE_KEY = 'revchat_session_profile_v2';
+const LEGACY_SESSION_PROFILE_KEY = 'revchat_session_profile_v2';
+const SESSION_PROFILE_KEY = 'revchat_session_profile_v3';
 
 function randomId(len = 6): string {
   const chars = '23456789abcdefghjkmnpqrstuvwxyz';
@@ -138,7 +139,12 @@ export function createSessionProfile(): UserProfile {
 
   try {
     if (typeof sessionStorage !== 'undefined') {
-      const saved = sessionStorage.getItem(SESSION_PROFILE_KEY);
+      const savedV3 = sessionStorage.getItem(SESSION_PROFILE_KEY);
+      const savedLegacy = savedV3 ? null : sessionStorage.getItem(LEGACY_SESSION_PROFILE_KEY);
+      const saved = savedV3 ?? savedLegacy;
+      if (savedLegacy) {
+        sessionStorage.removeItem(LEGACY_SESSION_PROFILE_KEY);
+      }
       if (saved) {
         const parsed = JSON.parse(saved) as Partial<UserProfile>;
         if (parsed && typeof parsed.clientId === 'string' && parsed.clientId.length >= 4) {
@@ -160,15 +166,17 @@ export function createSessionProfile(): UserProfile {
               : 'auto';
           const rawSize = parsed.fontSize as unknown;
           const fontSize =
-            typeof rawSize === 'number'
-              ? clampFontSize(rawSize)
-              : rawSize === 'l'
-                ? 20
-                : rawSize === 'm'
-                  ? 16
-                  : rawSize === 's'
-                    ? 14
-                    : DEFAULT_FONT_SIZE;
+            savedLegacy && (rawSize === 14 || rawSize === 's')
+              ? DEFAULT_FONT_SIZE
+              : typeof rawSize === 'number'
+                ? clampFontSize(rawSize)
+                : rawSize === 'l'
+                  ? 20
+                  : rawSize === 'm'
+                    ? 16
+                    : rawSize === 's'
+                      ? 14
+                      : DEFAULT_FONT_SIZE;
           const soundMuted = Boolean(parsed.soundMuted);
           const resolved: UserProfile = { clientId, nickname, theme, fontSize, soundMuted };
           saveSessionProfile(resolved);
@@ -199,5 +207,32 @@ export function saveSessionProfile(profile: UserProfile): void {
     }
   } catch {
     // ignore quota/private-mode errors
+  }
+}
+
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall back to execCommand for non-HTTPS LAN contexts
+  }
+  if (typeof document === 'undefined') return false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
   }
 }

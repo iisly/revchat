@@ -23,7 +23,7 @@ export function iconSearch(size = 15): string {
 export function iconShare(size = 14): string {
   return svg(
     size,
-    '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>'
+    '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>'
   );
 }
 
@@ -182,3 +182,14 @@ export function iconExpand(size = 14): string {
     '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>'
   );
 }
+
+export function iconArrowLeft(size = 13): string {
+  return svg(size, '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>');
+}
+
+export const REVCHAT_ASCII_BANNER = `  ____ _____ _   _  ____ _   _    _  _____ 
+ |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
+ | |_) |  _| | | | | |   | |_| | / _ \\ | |  
+ |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
+ |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
+      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩`;

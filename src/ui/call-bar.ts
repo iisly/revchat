@@ -207,7 +207,11 @@ export class CallDockController {
 
   private renderTileHtml(v: VideoEntry, extraClass: string, isFocused: boolean): string {
     const safeId = escapeAttr(v.id);
-    const title = isFocused ? 'Theater focus' : 'Click to pin • Double-click to expand';
+    const title = isFocused
+      ? 'Theater focus'
+      : extraClass.includes('single-tile')
+        ? 'Double-click to expand'
+        : 'Click to pin • Double-click to expand';
     return `
       <div class="call-tile ${extraClass}" data-tile-id="${safeId}" title="${title}">
         <video data-video-id="${safeId}" autoplay playsinline muted></video>

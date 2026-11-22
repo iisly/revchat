@@ -2,6 +2,7 @@ import { ASCII_EMOTE_LIST } from '../commands';
 import { escapeAttr, escapeHtml } from '../markdown';
 import { VoiceRecorder, formatDuration } from '../media';
 import {
+  iconArrowLeft,
   iconClose,
   iconGamepad,
   iconMic,
@@ -50,6 +51,12 @@ export class ComposerController {
 
   public hasOpenPopover(): boolean {
     return this.popoverMode !== 'none';
+  }
+
+  public closeNonVoicePopovers(): void {
+    if (this.popoverMode === 'plus' || this.popoverMode === 'emotes') {
+      this.closePopovers();
+    }
   }
 
   public closePopovers(): void {
@@ -177,12 +184,6 @@ export class ComposerController {
       }
     });
 
-    this.root.querySelector('#message-stream')?.addEventListener('click', () => {
-      if (this.popoverMode === 'plus' || this.popoverMode === 'emotes') {
-        this.closePopovers();
-      }
-    });
-
     this.renderPopoverDOM();
   }
 
@@ -242,9 +243,8 @@ export class ComposerController {
           <div class="emote-grid">
             ${ASCII_EMOTE_LIST.map(
               (item) => `
-              <button type="button" class="emote-tile" data-emote="${escapeAttr(item.emote)}">
+              <button type="button" class="emote-tile" data-emote="${escapeAttr(item.emote)}" title="${escapeAttr(item.label)}">
                 <span class="emote-art">${escapeHtml(item.emote)}</span>
-                <span class="emote-label">${escapeHtml(item.label)}</span>
               </button>
             `
             ).join('')}
@@ -256,7 +256,6 @@ export class ComposerController {
         btn.addEventListener('click', () => {
           const emote = btn.getAttribute('data-emote') || '';
           this.insertTextAndFocus(`${emote} `);
-          this.closePopovers();
         });
       });
       return;
@@ -273,22 +272,18 @@ export class ComposerController {
             <button type="button" class="plus-tile" data-plus="call">
               ${iconPhone(18)}
               <span class="plus-title">CALL</span>
-              <span class="plus-sub">Audio / Video</span>
             </button>
             <button type="button" class="plus-tile" data-plus="voice">
               ${iconMic(18)}
               <span class="plus-title">VOICE</span>
-              <span class="plus-sub">Voice note</span>
             </button>
             <button type="button" class="plus-tile" data-plus="file">
               ${iconPaperclip(18)}
               <span class="plus-title">FILE</span>
-              <span class="plus-sub">Photo / Video / Any</span>
             </button>
             <button type="button" class="plus-tile" data-plus="games">
               ${iconGamepad(18)}
               <span class="plus-title">GAME</span>
-              <span class="plus-sub">Mini-games</span>
             </button>
           </div>
         </div>
@@ -322,8 +317,8 @@ export class ComposerController {
       slot.innerHTML = `
         <div class="composer-popover" id="composer-popover">
           <div class="popover-header">
-            <button type="button" class="small" id="btn-plus-back">← BACK</button>
-            <span>MINI GAMES</span>
+            <button type="button" class="small" id="btn-plus-back">${iconArrowLeft(13)}<span>BACK</span></button>
+            <span>GAMES</span>
             <button type="button" class="small icon-btn" id="btn-popover-close" aria-label="Close">${iconClose(14)}</button>
           </div>
           <div class="games-grid">

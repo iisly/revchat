@@ -33,6 +33,7 @@ import {
 } from './security';
 import {
   buildRoomUrl,
+  copyTextToClipboard,
   createSessionProfile,
   generateRoomCode,
   generateUUID,
@@ -213,6 +214,20 @@ class RevChatApp {
           this.appendOrRefreshMessages();
         }
       }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!this.composer.hasOpenPopover()) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.closest('#composer-popover-slot') ||
+        target.closest('#btn-plus-drawer') ||
+        target.closest('#btn-emote-picker')
+      ) {
+        return;
+      }
+      this.composer.closeNonVoicePopovers();
     });
   }
 
@@ -539,6 +554,8 @@ class RevChatApp {
     this.notifications.updateContext(this.roomId, this.profile.soundMuted);
     this.replyTo = undefined;
     this.whisperTarget = undefined;
+    this.searchOpen = false;
+    this.searchQuery = '';
     this.mobileDrawerOpen = false;
     this.messages = [];
     this.messageMap.clear();
@@ -575,6 +592,10 @@ class RevChatApp {
     this.notifications.unlockAudio();
     const text = rawInput.trim();
     if (!text) return;
+
+    if (this.composer.hasOpenPopover()) {
+      this.composer.closePopovers();
+    }
 
     if (text.startsWith('/') && this.executeSlashCommand(text)) {
       return;
@@ -810,10 +831,10 @@ class RevChatApp {
         <div class="drawer-backdrop" id="drawer-backdrop" style="display:${this.mobileDrawerOpen ? 'block' : 'none'};"></div>
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
-            <a href="./" class="brand" id="brand-logo" title="revchat">
+            <div class="brand" id="brand-logo">
               <img src="./favicon.svg" class="brand-logo" width="22" height="22" alt="" />
               <span class="brand-name">revchat</span>
-            </a>
+            </div>
             <div class="sidebar-header-right">
               <span class="sig-status" title="Network status">
                 <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
@@ -839,7 +860,7 @@ class RevChatApp {
             <div class="sec-title">
               <span>Room</span>
               <span class="tool-group">
-                <button type="button" class="small" id="btn-lobby-room">LOBBY</button>
+                <button type="button" class="small" id="btn-lobby-room" ${this.roomId === 'LOBBY' ? 'disabled' : ''}>LOBBY</button>
                 <button type="button" class="small" id="btn-new-room">RANDOM</button>
               </span>
             </div>
@@ -952,7 +973,7 @@ class RevChatApp {
     return `
       <div class="search-bar">
         <input type="search" id="input-search" value="${escapeAttr(this.searchQuery)}" placeholder="Search messages or filenames..." />
-        <button type="button" class="small" id="btn-close-search">CLOSE</button>
+        <button type="button" class="small icon-btn" id="btn-close-search" title="Close search" aria-label="Close search">${iconClose(14)}</button>
       </div>
     `;
   }
@@ -1012,23 +1033,26 @@ class RevChatApp {
 
   private renderContextBannerHtml(): string {
     if (!this.replyTo && !this.whisperTarget) return '';
-    const parts: string[] = [];
+    const chips: string[] = [];
     if (this.whisperTarget) {
-      parts.push(`Private DM to <b>@${escapeHtml(this.whisperTarget.nickname)}</b>`);
+      chips.push(`
+        <span class="context-chip">
+          <span>DM to <b>@${escapeHtml(this.whisperTarget.nickname)}</b></span>
+          <button type="button" class="context-chip-close" id="btn-clear-dm" title="Exit DM mode" aria-label="Exit DM mode">${iconClose(12)}</button>
+        </span>
+      `);
     }
     if (this.replyTo) {
-      parts.push(
-        `Replying to <b>@${escapeHtml(this.replyTo.senderName)}</b>: "${escapeHtml(
-          this.replyTo.text.slice(0, 50)
-        )}"`
-      );
+      chips.push(`
+        <span class="context-chip">
+          <span>Reply to <b>@${escapeHtml(this.replyTo.senderName)}</b>: "${escapeHtml(
+            this.replyTo.text.slice(0, 40)
+          )}"</span>
+          <button type="button" class="context-chip-close" id="btn-clear-reply" title="Cancel reply" aria-label="Cancel reply">${iconClose(12)}</button>
+        </span>
+      `);
     }
-    return `
-      <div class="composer-context">
-        <span>${parts.join(' • ')}</span>
-        <button type="button" class="small" id="btn-clear-context">${iconClose(12)}<span>CANCEL</span></button>
-      </div>
-    `;
+    return `<div class="composer-context">${chips.join('')}</div>`;
   }
 
   private renderTypingText(): string {
@@ -1064,15 +1088,17 @@ class RevChatApp {
 
   private updateContextBannerDOM(): void {
     const container = this.root.querySelector('#composer-context-container');
-    if (container) {
-      container.innerHTML = this.renderContextBannerHtml();
-      container.querySelector('#btn-clear-context')?.addEventListener('click', () => {
-        this.replyTo = undefined;
-        this.whisperTarget = undefined;
-        this.updateContextBannerDOM();
-        this.updatePeersDOM();
-      });
-    }
+    if (!container) return;
+    container.innerHTML = this.renderContextBannerHtml();
+    container.querySelector('#btn-clear-dm')?.addEventListener('click', () => {
+      this.whisperTarget = undefined;
+      this.updateContextBannerDOM();
+      this.updatePeersDOM();
+    });
+    container.querySelector('#btn-clear-reply')?.addEventListener('click', () => {
+      this.replyTo = undefined;
+      this.updateContextBannerDOM();
+    });
   }
 
   private updateTypingDOM(): void {
@@ -1251,12 +1277,6 @@ class RevChatApp {
   // EVENT BINDINGS
   // =========================================================================
   private bindEvents(): void {
-    this.root.querySelector('#brand-logo')?.addEventListener('click', (e) => {
-      const me = e as MouseEvent;
-      if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
-      e.preventDefault();
-      window.location.reload();
-    });
     this.root.querySelector('#btn-open-drawer')?.addEventListener('click', () => {
       this.setMobileDrawerOpen(true);
     });
@@ -1684,6 +1704,12 @@ class RevChatApp {
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
 
+      if (!targetEl.closest('.reaction-picker') && !targetEl.closest('[data-react-open]')) {
+        stream.querySelectorAll('.reaction-picker-slot:not(:empty)').forEach((s) => {
+          s.innerHTML = '';
+        });
+      }
+
       if (targetEl.closest('#btn-empty-invite')) {
         void this.openInviteModal();
         return;
@@ -1740,8 +1766,12 @@ class RevChatApp {
       if (reactOpenBtn) {
         const id = reactOpenBtn.getAttribute('data-react-open') || '';
         const slot = stream.querySelector(`[data-react-slot="${id}"]`);
-        if (slot) {
-          slot.innerHTML = slot.innerHTML ? '' : renderReactionPickerHtml(id);
+        const wasOpen = Boolean(slot && slot.innerHTML !== '');
+        stream.querySelectorAll('.reaction-picker-slot:not(:empty)').forEach((s) => {
+          s.innerHTML = '';
+        });
+        if (slot && !wasOpen) {
+          slot.innerHTML = renderReactionPickerHtml(id);
         }
         return;
       }
@@ -1764,8 +1794,9 @@ class RevChatApp {
         const id = copyBtn.getAttribute('data-copy-id') || '';
         const target = this.messageMap.get(id);
         if (target) {
-          navigator.clipboard?.writeText(target.text);
-          this.showToast('Message copied!');
+          void copyTextToClipboard(target.text).then((ok) =>
+            this.showToast(ok ? 'Message copied' : 'Could not copy message')
+          );
         }
         return;
       }

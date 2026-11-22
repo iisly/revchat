@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  computeFingerprint,
   decryptBytes,
   decryptJson,
   derivePairwiseAesKey,
-  deriveRoomKeyFromPassphrase,
   encryptBytes,
   encryptJson,
   generateSessionIdentity,
@@ -50,21 +48,8 @@ describe('crypto module', () => {
     expect(await decryptJson<typeof payload>(key2!, encoded)).toBeNull();
   });
 
-  it('derives room-scoped AES keys from shared passphrase', async () => {
-    const kA = await deriveRoomKeyFromPassphrase('freedom-pass', 'ROOM-A');
-    const kA2 = await deriveRoomKeyFromPassphrase('freedom-pass', 'ROOM-A');
-    const kB = await deriveRoomKeyFromPassphrase('freedom-pass', 'ROOM-B');
-
-    const cipher = await encryptJson(kA, { msg: 'ok' });
-    expect(await decryptJson(kA2, cipher)).toEqual({ msg: 'ok' });
-    expect(await decryptJson(kB, cipher)).toBeNull();
-  });
-
   it('signs and verifies messages with ECDSA P-256 and detects tampering', async () => {
     const id = await generateSessionIdentity();
-    expect(id.fingerprint).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}$/);
-    expect(await computeFingerprint(id.signPubB64)).toBe(id.fingerprint);
-
     const sig = await signText(id.signKeyPair.privateKey, 'MSG:1:hello');
     expect(await verifyText(id.signPubB64, 'MSG:1:hello', sig)).toBe(true);
     expect(await verifyText(id.signPubB64, 'MSG:1:tampered', sig)).toBe(false);

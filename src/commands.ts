@@ -1,3 +1,4 @@
+import { ALLOWED_REACTIONS } from './security';
 import { PeerInfo } from './types';
 
 export interface SlashCommandDef {
@@ -14,7 +15,7 @@ export interface AsciiEmoteItem {
   label: string;
 }
 
-export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
+export const REACTION_EMOJIS = ALLOWED_REACTIONS;
 
 export const EIGHT_BALL_ANSWERS = [
   'It is certain.',
@@ -49,7 +50,7 @@ export const ASCII_EMOTES: Record<string, string> = Object.fromEntries(
   ASCII_EMOTE_LIST.map((item) => [item.cmd, item.emote])
 );
 
-export const DEFAULT_FONT_SIZE = 14;
+export const DEFAULT_FONT_SIZE = 16;
 export const MIN_FONT_SIZE = 12;
 export const MAX_FONT_SIZE = 22;
 export const FONT_SIZE_STEP = 2;
@@ -208,7 +209,7 @@ export function runRps(nick: string, argStr = ''): GameCommandResult {
   return { text: `${nick} threw ${pick}!` };
 }
 
-export function runEightBall(nick: string, argStr: string): GameCommandResult {
+export function runEightBall(_nick: string, argStr: string): GameCommandResult {
   const q = argStr.trim();
   if (!q) {
     return { error: 'Usage: /8ball <question>' };

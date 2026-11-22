@@ -68,7 +68,7 @@ describe('storage & URL routing module', () => {
     expect(lMap.size).toBe(0);
     expect(p1.nickname).toBe(p1.clientId.toUpperCase());
     expect(p1.nickname).toMatch(/^[2-9A-HJ-NP-Z]{6}$/);
-    expect(p1.fontSize).toBe(14);
+    expect(p1.fontSize).toBe(16);
     p1.nickname = 'CustomNick';
     p1.soundMuted = true;
     saveSessionProfile(p1);

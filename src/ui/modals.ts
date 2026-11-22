@@ -1,5 +1,6 @@
 import { escapeAttr, escapeHtml } from '../markdown';
-import { iconClose, iconDownload } from './icons';
+import { copyTextToClipboard } from '../storage';
+import { REVCHAT_ASCII_BANNER, iconClose, iconDownload } from './icons';
 
 export type ActiveModalType = 'none' | 'invite' | 'help' | 'lightbox';
 
@@ -70,8 +71,9 @@ export function renderModalDOM(
     `;
     bindBaseClose();
     modalRoot.querySelector('#btn-copy-invite')?.addEventListener('click', () => {
-      navigator.clipboard?.writeText(ctx.inviteUrl);
-      callbacks.onToast('Invite URL copied to clipboard');
+      void copyTextToClipboard(ctx.inviteUrl).then((ok) =>
+        callbacks.onToast(ok ? 'Invite URL copied to clipboard' : 'Could not copy invite URL')
+      );
     });
     modalRoot.querySelector('#btn-native-share')?.addEventListener('click', () => {
       navigator
@@ -118,12 +120,7 @@ export function renderModalDOM(
         </div>
         <div class="modal-body help-modal-body">
           <pre class="ascii-banner">
-  ____ _____ _   _  ____ _   _    _  _____ 
- |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
- | |_) |  _| | | | | |   | |_| | / _ \\ | |  
- |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
- |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
+${REVCHAT_ASCII_BANNER}</pre>
 
           <div class="help-section">
             <div class="help-section-title">How to Chat</div>
@@ -151,7 +148,7 @@ export function renderModalDOM(
                   <span class="help-step-num">3</span>
                   <div class="help-step-content">
                     <b>Calls, Voice, Files & Games via [+]</b>
-                    <span>Tap <code>+</code> beside the message box for Calls, Voice notes, Files/Media, and Mini-games, or <code>☺</code> for ASCII emotes.</span>
+                    <span>Tap <code>+</code> beside the message box for Calls, Voice notes, Files/Media, and Games, or <code>☺</code> for ASCII emotes.</span>
                   </div>
                 </div>
               </div>

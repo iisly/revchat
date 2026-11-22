@@ -2,7 +2,7 @@ import { REACTION_EMOJIS } from '../commands';
 import { escapeAttr, escapeHtml, formatMessageBody } from '../markdown';
 import { formatDuration, formatFileSize } from '../media';
 import { ChatMessage } from '../types';
-import { iconDownload, iconMic, iconPaperclip } from './icons';
+import { REVCHAT_ASCII_BANNER, iconDownload, iconMic, iconPaperclip, iconShare } from './icons';
 
 const GROUP_WINDOW_MS = 180_000;
 
@@ -179,10 +179,11 @@ export function renderSingleMessageHtml(
           data-reply-id="${escapeAttr(m.id)}"
           data-reply-sender="${escapeAttr(m.senderName)}"
           data-reply-text="${escapeAttr((m.text || m.attachment?.name || 'attachment').slice(0, 80))}"
+          title="Reply"
         >reply</button>
         ${
           isSelf
-            ? `<button type="button" class="msg-action-link" data-delete-id="${escapeAttr(m.id)}" title="Delete">del</button>`
+            ? `<button type="button" class="msg-action-link danger-link" data-delete-id="${escapeAttr(m.id)}" title="Delete">del</button>`
             : ''
         }
       </span>
@@ -200,10 +201,10 @@ export function renderSingleMessageHtml(
       <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''} grouped" data-msg-id="${escapeAttr(m.id)}">
         <div class="msg-grouped-meta">
           <span class="msg-time grouped-time">${timeStr}</span>
-          ${statusHtml}
           ${actionButtons}
         </div>
         ${bodyContent}
+        ${statusHtml ? `<div class="msg-grouped-status">${statusHtml}</div>` : ''}
         ${!m.deleted ? renderReactionsHtml(m, ctx.myPeerId) : ''}
         <div class="reaction-picker-slot" data-react-slot="${escapeAttr(m.id)}"></div>
       </div>
@@ -213,7 +214,7 @@ export function renderSingleMessageHtml(
   return `
     <div class="msg-row ${isSelf ? 'self' : ''} ${m.targetPeerId ? 'whisper' : ''}" data-msg-id="${escapeAttr(m.id)}">
       <div class="msg-header">
-        <div>
+        <div class="msg-header-left">
           <span class="msg-author ${isSelf ? 'self' : ''}">${escapeHtml(m.senderName)}</span>
           <span class="msg-time">${timeStr}</span>
         </div>
@@ -240,15 +241,10 @@ export function renderEmptyStateHtml(ctx: MessageRenderContext): string {
   return `
     <div class="empty-state">
       <pre class="ascii-banner">
-  ____ _____ _   _  ____ _   _    _  _____ 
- |  _ \\ ____| | | |/ ___| | | |  / \\|_   _|
- | |_) |  _| | | | | |   | |_| | / _ \\ | |  
- |  _ &lt;| |___\\ \\_/ / |___|  _  |/ ___ \\| |  
- |_| \\_\\_____|\\___/ \\____|_| |_/_/   \\_\\_|  
-      (ง ͡° ͜ʖ ͡°)ง🏴   🚩( ͡° ͜ʖ ͡°)🚩</pre>
+${REVCHAT_ASCII_BANNER}</pre>
       <div class="empty-header">#${escapeHtml(ctx.roomId)}</div>
       <div class="empty-actions">
-        <button type="button" class="small primary" id="btn-empty-invite">INVITE / QR</button>
+        <button type="button" class="small primary" id="btn-empty-invite">${iconShare(14)}<span>INVITE</span></button>
       </div>
       <div class="empty-hint">
         Share the invite link or enter the same room code to start talking. Type <code>/help</code> anytime.

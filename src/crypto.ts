@@ -44,31 +44,6 @@ export async function importRoomKey(base64urlKey: string): Promise<CryptoKey | n
   }
 }
 
-export async function deriveRoomKeyFromPassphrase(
-  passphrase: string,
-  roomId: string
-): Promise<CryptoKey> {
-  const keyMaterial = await globalThis.crypto.subtle.importKey(
-    'raw',
-    toArrayBuffer(textEncoder.encode(passphrase)),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  return await globalThis.crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: toArrayBuffer(textEncoder.encode(`revchat-e2ee-${roomId}`)),
-      iterations: 100_000,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
 export async function encryptBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array> {
   const iv = new Uint8Array(12);
   globalThis.crypto.getRandomValues(iv);
@@ -125,17 +100,6 @@ export interface SessionIdentity {
   ecdhKeyPair: CryptoKeyPair;
   signPubB64: string;
   ecdhPubB64: string;
-  fingerprint: string;
-}
-
-export async function computeFingerprint(spkiB64: string): Promise<string> {
-  const bytes = base64ToBytes(spkiB64);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', toArrayBuffer(bytes));
-  const arr = new Uint8Array(digest);
-  const hex = Array.from(arr.subarray(0, 4))
-    .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
-    .join('');
-  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
 }
 
 export async function generateSessionIdentity(): Promise<SessionIdentity> {
@@ -155,9 +119,8 @@ export async function generateSessionIdentity(): Promise<SessionIdentity> {
 
   const signPubB64 = bytesToBase64(new Uint8Array(signSpki));
   const ecdhPubB64 = bytesToBase64(new Uint8Array(ecdhSpki));
-  const fingerprint = await computeFingerprint(signPubB64);
 
-  return { signKeyPair, ecdhKeyPair, signPubB64, ecdhPubB64, fingerprint };
+  return { signKeyPair, ecdhKeyPair, signPubB64, ecdhPubB64 };
 }
 
 export async function signText(privateKey: CryptoKey, data: string): Promise<string> {
@@ -169,19 +132,30 @@ export async function signText(privateKey: CryptoKey, data: string): Promise<str
   return bytesToBase64(new Uint8Array(sig));
 }
 
+const MAX_VERIFY_KEY_CACHE = 64;
+const verifyKeyCache = new Map<string, CryptoKey>();
+
 export async function verifyText(
   pubB64: string,
   data: string,
   sigB64: string
 ): Promise<boolean> {
   try {
-    const pubKey = await globalThis.crypto.subtle.importKey(
-      'spki',
-      toArrayBuffer(base64ToBytes(pubB64)),
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      false,
-      ['verify']
-    );
+    let pubKey = verifyKeyCache.get(pubB64);
+    if (!pubKey) {
+      pubKey = await globalThis.crypto.subtle.importKey(
+        'spki',
+        toArrayBuffer(base64ToBytes(pubB64)),
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['verify']
+      );
+      if (verifyKeyCache.size >= MAX_VERIFY_KEY_CACHE) {
+        const oldest = verifyKeyCache.keys().next().value;
+        if (oldest !== undefined) verifyKeyCache.delete(oldest);
+      }
+      verifyKeyCache.set(pubB64, pubKey);
+    }
     return await globalThis.crypto.subtle.verify(
       { name: 'ECDSA', hash: 'SHA-256' },
       pubKey,
