@@ -561,6 +561,7 @@ button.icon-btn.muted {
   color: var(--accent);
   margin: 0 auto;
   max-width: 100%;
+  flex-shrink: 0;
   text-align: center;
   overflow: hidden;
   white-space: pre;
@@ -1054,13 +1055,6 @@ button.icon-btn.muted {
   font-size: 15px;
   color: var(--fg);
   font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.help-guide-sub {
-  font-size: 13.5px;
-  color: var(--fg-muted);
-  line-height: 1.45;
 }
 
 .help-guide-steps {
