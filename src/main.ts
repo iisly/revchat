@@ -124,6 +124,7 @@ class RevChatApp {
   private lastTypingSentAt = 0;
   private stopTypingTimer: number | null = null;
   private toastTimer: number | null = null;
+  private lastPeersListHtml = '';
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -897,6 +898,7 @@ class RevChatApp {
   // DOM RENDERING & INCREMENTAL UPDATES
   // =========================================================================
   public render(): void {
+    this.lastPeersListHtml = '';
     const prevStream = this.root.querySelector('#message-stream') as HTMLElement | null;
     const prevScrollTop = prevStream ? prevStream.scrollTop : null;
     const wasAtBottom = this.isAtBottom;
@@ -1147,7 +1149,13 @@ class RevChatApp {
 
   private updatePeersDOM(): void {
     const listEl = this.root.querySelector('#peer-list-container');
-    if (listEl) listEl.innerHTML = this.renderPeersListHtml();
+    if (listEl) {
+      const nextHtml = this.renderPeersListHtml();
+      if (nextHtml !== this.lastPeersListHtml) {
+        listEl.innerHTML = nextHtml;
+        this.lastPeersListHtml = nextHtml;
+      }
+    }
     const sideCount = this.root.querySelector('#peer-count-side');
     if (sideCount) sideCount.textContent = String(this.peers.length);
     const topBadge = this.root.querySelector('#topbar-peer-badge');

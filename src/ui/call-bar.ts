@@ -57,6 +57,10 @@ export class CallDockController {
   private autoPinnedScreenId: string | null = null;
   private stageCollapsed = false;
   private lastRenderKey = '';
+  private lastControlsSig = '';
+  private lastChipsSig = '';
+  private lastTileLabelsSig = '';
+  private lastFullscreenSig: boolean | null = null;
   private lastContainer: HTMLElement | null = null;
   private lastState: CallDockState | null = null;
   private lastCallbacks: CallDockCallbacks | null = null;
@@ -148,6 +152,19 @@ export class CallDockController {
     return this.selfPreviewStream;
   }
 
+  private clearVideoElements(slot: HTMLElement | null): void {
+    if (!slot) return;
+    slot.querySelectorAll('video').forEach((node) => {
+      const vid = node as HTMLVideoElement;
+      try {
+        vid.pause();
+        vid.srcObject = null;
+      } catch {
+        // ignore
+      }
+    });
+  }
+
   private clearAudioPool(): void {
     for (const el of this.audioEls.values()) {
       el.srcObject = null;
@@ -160,6 +177,7 @@ export class CallDockController {
     this.stopTimer();
     this.clearAudioPool();
     this.clearVideoTrackCleanups();
+    this.clearVideoElements(this.uiSlotEl);
     this.clearSelfPreviewStream();
     this.callStartedAt = null;
     this.pinnedPeerId = null;
@@ -167,6 +185,10 @@ export class CallDockController {
     this.autoPinnedScreenId = null;
     this.stageCollapsed = false;
     this.lastRenderKey = '';
+    this.lastControlsSig = '';
+    this.lastChipsSig = '';
+    this.lastTileLabelsSig = '';
+    this.lastFullscreenSig = null;
     this.callAudioMuted = false;
     this.callVolume = 1;
     this.lastNonZeroVolume = 1;
@@ -221,6 +243,11 @@ export class CallDockController {
       this.audioPoolEl.parentElement !== container
     ) {
       this.clearAudioPool();
+      this.clearVideoElements(this.uiSlotEl);
+      this.lastControlsSig = '';
+      this.lastChipsSig = '';
+      this.lastTileLabelsSig = '';
+      this.lastFullscreenSig = null;
       container.innerHTML = '';
       this.uiSlotEl = document.createElement('div');
       this.uiSlotEl.className = 'call-ui-slot';
@@ -277,8 +304,12 @@ export class CallDockController {
       if (el.srcObject !== rs.stream) {
         el.srcObject = rs.stream;
       }
-      el.volume = this.callVolume;
-      el.muted = effectiveMuted;
+      if (Math.abs(el.volume - this.callVolume) > 0.001) {
+        el.volume = this.callVolume;
+      }
+      if (el.muted !== effectiveMuted) {
+        el.muted = effectiveMuted;
+      }
       if (el.paused) {
         void el.play().catch(() => {});
       }
@@ -317,6 +348,7 @@ export class CallDockController {
     this.applyAudioOutputState();
     if (this.uiSlotEl && this.lastState) {
       this.syncControlsInPlace(this.uiSlotEl, this.lastState);
+      this.syncChipsInPlace(this.uiSlotEl, this.lastState);
     }
   }
 
@@ -333,6 +365,7 @@ export class CallDockController {
     this.applyAudioOutputState();
     if (this.uiSlotEl && this.lastState) {
       this.syncControlsInPlace(this.uiSlotEl, this.lastState);
+      this.syncChipsInPlace(this.uiSlotEl, this.lastState);
     }
   }
 
@@ -371,6 +404,8 @@ export class CallDockController {
 
   private syncFullscreenButtons(slot: HTMLElement): void {
     const isFs = this.isNativeFullscreen();
+    if (isFs === this.lastFullscreenSig) return;
+    this.lastFullscreenSig = isFs;
     const label = isFs ? 'Exit fullscreen' : 'Fullscreen';
     slot.querySelectorAll('[data-fullscreen-tile]').forEach((btn) => {
       btn.setAttribute('title', label);
@@ -430,7 +465,30 @@ export class CallDockController {
     ].join('');
   }
 
+  private getControlsSig(state: CallDockState): string {
+    return `${state.localMuted ? 1 : 0}:${this.isAudioOutputMuted() ? 1 : 0}:${this.getVolumePercent()}`;
+  }
+
+  private getChipsSig(state: CallDockState): string {
+    const outputMuted = this.isAudioOutputMuted() ? 1 : 0;
+    const remotes = state.remoteStreams
+      .map(
+        (rs) =>
+          `${rs.peerId}:${this.resolvePeerNickname(rs.peerId, rs.nickname, state)}:${rs.hasVideo ? 1 : 0}:${rs.isScreenShare ? 1 : 0}`
+      )
+      .join('|');
+    return `${state.myNickname}:${state.localVideoEnabled ? 1 : 0}:${state.isScreenShare ? 1 : 0}:${state.localMuted ? 1 : 0}:${outputMuted};${remotes}`;
+  }
+
+  private getTileLabelsSig(videoEntries: VideoEntry[]): string {
+    return videoEntries.map((v) => `${v.id}:${v.label}:${v.isScreenShare ? 1 : 0}`).join('|');
+  }
+
   private syncControlsInPlace(slot: HTMLElement, state: CallDockState): void {
+    const sig = this.getControlsSig(state);
+    if (sig === this.lastControlsSig) return;
+    this.lastControlsSig = sig;
+
     const muteBtn = slot.querySelector('#btn-call-mute');
     if (muteBtn) {
       muteBtn.classList.toggle('off', state.localMuted);
@@ -461,22 +519,22 @@ export class CallDockController {
       slider.style.setProperty('--vol-pct', `${pct}%`);
       slider.setAttribute('title', `Call volume: ${pct}%`);
     }
+  }
 
+  private syncChipsInPlace(slot: HTMLElement, state: CallDockState): void {
+    const sig = this.getChipsSig(state);
+    if (sig === this.lastChipsSig) return;
+    this.lastChipsSig = sig;
     const chipsEl = slot.querySelector('.call-chips');
     if (chipsEl) {
       chipsEl.innerHTML = this.renderParticipantChipsHtml(state);
     }
   }
 
-  private syncLabelsInPlace(
-    slot: HTMLElement,
-    state: CallDockState,
-    videoEntries: VideoEntry[]
-  ): void {
-    const chipsEl = slot.querySelector('.call-chips');
-    if (chipsEl) {
-      chipsEl.innerHTML = this.renderParticipantChipsHtml(state);
-    }
+  private syncTileLabelsInPlace(slot: HTMLElement, videoEntries: VideoEntry[]): void {
+    const sig = this.getTileLabelsSig(videoEntries);
+    if (sig === this.lastTileLabelsSig) return;
+    this.lastTileLabelsSig = sig;
 
     const byId = new Map(videoEntries.map((v) => [v.id, v]));
     slot.querySelectorAll('[data-tile-label-id]').forEach((el) => {
@@ -498,16 +556,19 @@ export class CallDockController {
 
   private renderTileHtml(v: VideoEntry, extraClass: string, isFocused: boolean): string {
     const safeId = escapeAttr(v.id);
+    const isSelfScreen = v.isSelf && v.isScreenShare;
     const isFs = this.isNativeFullscreen();
     const fsLabel = isFs ? 'Exit fullscreen' : 'Fullscreen';
-    const title = isFocused
-      ? 'Theater view'
-      : extraClass.includes('single-tile')
-        ? 'Double-click to expand'
-        : 'Click to pin • Double-click to expand';
-    return `
-      <div class="call-tile ${extraClass}" data-tile-id="${safeId}" title="${title}">
-        <video data-video-id="${safeId}" autoplay playsinline muted></video>
+    const title = isSelfScreen
+      ? 'Sharing your screen'
+      : isFocused
+        ? 'Theater view'
+        : extraClass.includes('single-tile')
+          ? 'Double-click to expand'
+          : 'Click to pin • Double-click to expand';
+    const toolsHtml = isSelfScreen
+      ? ''
+      : `
         <div class="call-tile-tools">
           <button
             type="button"
@@ -524,6 +585,11 @@ export class CallDockController {
             aria-label="${fsLabel}"
           >${isFs ? iconMinimize(14) : iconMaximize(14)}</button>
         </div>
+      `;
+    return `
+      <div class="call-tile ${extraClass}" data-tile-id="${safeId}" title="${title}">
+        <video data-video-id="${safeId}" autoplay playsinline muted></video>
+        ${toolsHtml}
         <span class="call-tile-label" data-tile-label-id="${safeId}">${this.renderTileLabelInner(v)}</span>
       </div>
     `;
@@ -566,12 +632,17 @@ export class CallDockController {
       this.theaterPeerId = null;
       this.autoPinnedScreenId = null;
       this.stageCollapsed = false;
+      this.lastControlsSig = '';
+      this.lastChipsSig = '';
+      this.lastTileLabelsSig = '';
+      this.lastFullscreenSig = null;
       this.callAudioMuted = false;
       this.callVolume = 1;
       this.lastNonZeroVolume = 1;
 
       if (peersInCall.length === 0 && remoteStreams.length === 0) {
         if (this.lastRenderKey !== 'idle' || containerChanged) {
+          this.clearVideoElements(slot);
           slot.innerHTML = '';
           this.lastRenderKey = 'idle';
         }
@@ -587,6 +658,7 @@ export class CallDockController {
       if (passiveKey === this.lastRenderKey && !containerChanged) return;
       this.lastRenderKey = passiveKey;
 
+      this.clearVideoElements(slot);
       slot.innerHTML = `
         <div class="call-banner">
           <div class="call-banner-info">
@@ -631,13 +703,14 @@ export class CallDockController {
     if (this.pinnedPeerId && !activeIds.has(this.pinnedPeerId)) {
       this.pinnedPeerId = null;
     }
-    if (this.theaterPeerId && !activeIds.has(this.theaterPeerId)) {
+    if (
+      this.theaterPeerId &&
+      (!activeIds.has(this.theaterPeerId) || (this.theaterPeerId === 'self' && isScreenShare))
+    ) {
       this.theaterPeerId = null;
     }
 
-    const screenId =
-      remoteStreams.find((r) => r.hasVideo && r.isScreenShare)?.peerId ??
-      (localVideoEnabled && isScreenShare ? 'self' : null);
+    const screenId = remoteStreams.find((r) => r.hasVideo && r.isScreenShare)?.peerId ?? null;
     if (screenId) {
       if (screenId !== this.autoPinnedScreenId) {
         this.autoPinnedScreenId = screenId;
@@ -677,7 +750,8 @@ export class CallDockController {
     this.ensureTimerRunning(slot);
     if (renderKey === this.lastRenderKey && !containerChanged) {
       this.syncControlsInPlace(slot, state);
-      this.syncLabelsInPlace(slot, state, videoEntries);
+      this.syncChipsInPlace(slot, state);
+      this.syncTileLabelsInPlace(slot, videoEntries);
       this.syncFullscreenButtons(slot);
       this.resumeAllMedia();
       return;
@@ -720,14 +794,19 @@ export class CallDockController {
             ? `
           <div class="call-thumbs">
             ${otherEntries
-              .map(
-                (v) => `
-              <div class="call-thumb" data-switch-focus="${escapeAttr(v.id)}" title="Focus ${escapeAttr(v.label)}">
-                <video data-video-id="${escapeAttr(v.id)}" autoplay playsinline muted></video>
-                <span class="call-tile-label" data-tile-label-id="${escapeAttr(v.id)}">${this.renderTileLabelInner(v)}</span>
-              </div>
-            `
-              )
+              .map((v) => {
+                const safeThumbId = escapeAttr(v.id);
+                const thumbFocusAttr =
+                  v.isSelf && v.isScreenShare
+                    ? `title="${escapeAttr(v.label)}"`
+                    : `data-switch-focus="${safeThumbId}" title="Focus ${escapeAttr(v.label)}"`;
+                return `
+                  <div class="call-thumb" ${thumbFocusAttr}>
+                    <video data-video-id="${safeThumbId}" autoplay playsinline muted></video>
+                    <span class="call-tile-label" data-tile-label-id="${safeThumbId}">${this.renderTileLabelInner(v)}</span>
+                  </div>
+                `;
+              })
               .join('')}
           </div>
         `
@@ -783,6 +862,7 @@ export class CallDockController {
       `
       : speakerControlHtml;
 
+    this.clearVideoElements(slot);
     slot.innerHTML = `
       <div class="call-dock ${isTheater ? 'theater' : ''}">
         ${stageHtml}
@@ -848,6 +928,10 @@ export class CallDockController {
     `;
 
     // Bind MediaStreams directly to video elements
+    this.lastControlsSig = this.getControlsSig(state);
+    this.lastChipsSig = this.getChipsSig(state);
+    this.lastTileLabelsSig = this.getTileLabelsSig(videoEntries);
+    this.lastFullscreenSig = isFs;
     this.clearVideoTrackCleanups();
     const streamById = new Map(videoEntries.map((v) => [v.id, v.stream]));
     slot.querySelectorAll('video[data-video-id]').forEach((node) => {
@@ -921,7 +1005,10 @@ export class CallDockController {
     if (!isTheater) {
       slot.querySelectorAll('[data-tile-id]').forEach((tile) => {
         tile.addEventListener('click', (e) => {
-          if ((e.target as HTMLElement | null)?.closest('.tile-tool-btn')) return;
+          if (this.isNativeFullscreen()) return;
+          if ((e.target as HTMLElement | null)?.closest('.tile-tool-btn')) {
+            return;
+          }
           if (videoEntries.length <= 1) return;
           const pid = tile.getAttribute('data-tile-id') || '';
           this.pinnedPeerId = this.pinnedPeerId === pid ? null : pid;
@@ -929,14 +1016,16 @@ export class CallDockController {
           this.render(container, state, callbacks);
         });
         tile.addEventListener('dblclick', (e) => {
-          if ((e.target as HTMLElement | null)?.closest('.tile-tool-btn')) return;
-          this.resumeAllMedia();
-          const pid = tile.getAttribute('data-tile-id') || '';
-          if (pid) {
-            this.theaterPeerId = pid;
-            this.lastRenderKey = '';
-            this.render(container, state, callbacks);
+          if (this.isNativeFullscreen()) return;
+          if ((e.target as HTMLElement | null)?.closest('.tile-tool-btn')) {
+            return;
           }
+          const pid = tile.getAttribute('data-tile-id') || '';
+          if (!pid || (pid === 'self' && isScreenShare)) return;
+          this.resumeAllMedia();
+          this.theaterPeerId = pid;
+          this.lastRenderKey = '';
+          this.render(container, state, callbacks);
         });
       });
     }

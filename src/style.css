@@ -2060,6 +2060,7 @@ button.danger:hover {
   border-radius: 50%;
   background: var(--ok);
   flex-shrink: 0;
+  will-change: opacity;
   animation: recPulse 1.6s infinite;
 }
 

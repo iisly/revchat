@@ -856,6 +856,8 @@ export class P2PEngine {
         }
         const curStream = this.remoteStreams.get(packet.senderId);
         if (!inCall && curStream) {
+          this.remoteStreamCleanups.get(packet.senderId)?.();
+          this.remoteStreamCleanups.delete(packet.senderId);
           this.remoteStreams.delete(packet.senderId);
           this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
         } else if (inCall && curStream) {
@@ -1700,7 +1702,10 @@ export class P2PEngine {
     if (!this.isScreenShare) {
       let disp: MediaStream;
       try {
-        disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        disp = await navigator.mediaDevices.getDisplayMedia({
+          video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 24, max: 30 } },
+          audio: true,
+        });
       } catch (err: any) {
         if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
           throw err;
