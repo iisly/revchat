@@ -30,55 +30,54 @@ const EXT_MIME_MAP: Record<string, string> = {
   aac: 'audio/aac',
   pdf: 'application/pdf',
   txt: 'text/plain',
-  md: 'text/markdown',
-  markdown: 'text/markdown',
-  json: 'application/json',
-  csv: 'text/csv',
-  tsv: 'text/tab-separated-values',
-  xml: 'application/xml',
-  yaml: 'text/yaml',
-  yml: 'text/yaml',
-  html: 'text/html',
-  htm: 'text/html',
-  css: 'text/css',
-  js: 'text/javascript',
-  ts: 'text/typescript',
-  log: 'text/plain',
 };
 
-type FilePreviewKind = 'none' | 'text' | 'csv' | 'pdf';
-export const MAX_TEXT_PREVIEW_BYTES = 200_000;
-export const MAX_CSV_PREVIEW_ROWS = 200;
-const MAX_CSV_PREVIEW_COLS = 30;
+export function canOpenFileInBrowser(mimeType: string, filename = ''): boolean {
+  const mime = mimeType.toLowerCase().split(';')[0].trim();
+  const base = filename.toLowerCase().split(/[\\/]/).pop() || '';
+  const ext = base.includes('.') ? base.split('.').pop() || '' : '';
+  return mime === 'application/pdf' || ext === 'pdf' || mime === 'text/plain' || ext === 'txt';
+}
 
-const TEXT_PREVIEW_MIMES = new Set([
-  'application/json',
-  'application/xml',
-  'application/javascript',
-  'application/typescript',
-  'application/x-yaml',
-  'application/yaml',
-  'application/toml',
-  'application/sql',
-  'application/x-sh',
-]);
+export function resolveTextBlobMime(
+  bytes: Uint8Array | ArrayBuffer,
+  mimeType: string,
+  filename = ''
+): string {
+  const lowerMime = mimeType.toLowerCase();
+  const baseMime = lowerMime.split(';')[0].trim();
+  const baseName = filename.toLowerCase().split(/[\\/]/).pop() || '';
+  const ext = baseName.includes('.') ? baseName.split('.').pop() || '' : '';
+  if (baseMime !== 'text/plain' && ext !== 'txt') {
+    return mimeType;
+  }
+  if (/;\s*charset=/i.test(lowerMime)) {
+    return mimeType;
+  }
 
-const TEXT_PREVIEW_EXTS = new Set([
-  'txt', 'md', 'markdown', 'json', 'jsonc', 'jsonl', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx',
-  'py', 'rb', 'go', 'rs', 'java', 'kt', 'swift', 'c', 'h', 'cpp', 'hpp', 'cs', 'php',
-  'html', 'htm', 'css', 'scss', 'less', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
-  'env', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'log', 'diff', 'patch',
-  'gitignore', 'editorconfig',
-]);
-
-const TEXT_PREVIEW_BASENAMES = new Set([
-  'readme',
-  'license',
-  'makefile',
-  'dockerfile',
-  'changelog',
-  'authors',
-]);
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let charset = 'utf-8';
+  if (view.length >= 3 && view[0] === 0xef && view[1] === 0xbb && view[2] === 0xbf) {
+    charset = 'utf-8';
+  } else if (view.length >= 2 && view[0] === 0xff && view[1] === 0xfe) {
+    charset = 'utf-16le';
+  } else if (view.length >= 2 && view[0] === 0xfe && view[1] === 0xff) {
+    charset = 'utf-16be';
+  } else {
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(view);
+      charset = 'utf-8';
+    } catch {
+      try {
+        new TextDecoder('euc-kr', { fatal: true }).decode(view);
+        charset = 'euc-kr';
+      } catch {
+        charset = 'utf-8';
+      }
+    }
+  }
+  return `text/plain;charset=${charset}`;
+}
 
 export function inferMimeFromFilename(filename: string): string {
   const ext = filename.toLowerCase().split('.').pop() || '';
@@ -122,129 +121,6 @@ export function normalizePastedFile(file: File): File {
   return new File([file], name, {
     type: file.type || inferMimeFromFilename(name),
   });
-}
-
-export function classifyFilePreview(mimeType: string, filename = ''): FilePreviewKind {
-  const mime = mimeType.toLowerCase().split(';')[0].trim();
-  const base = filename.toLowerCase().split(/[\\/]/).pop() || '';
-  const ext = base.includes('.') ? base.split('.').pop() || '' : '';
-
-  if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
-  if (mime === 'text/csv' || mime === 'text/tab-separated-values' || ext === 'csv' || ext === 'tsv') {
-    return 'csv';
-  }
-  if (
-    mime.startsWith('text/') ||
-    TEXT_PREVIEW_MIMES.has(mime) ||
-    TEXT_PREVIEW_EXTS.has(ext) ||
-    TEXT_PREVIEW_BASENAMES.has(base)
-  ) {
-    return 'text';
-  }
-  return 'none';
-}
-
-export function parseDelimitedTable(
-  text: string,
-  delimiter: ',' | '\t' = ',',
-  maxRows = MAX_CSV_PREVIEW_ROWS,
-  maxCols = MAX_CSV_PREVIEW_COLS
-): { rows: string[][]; truncated: boolean } {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let inQuotes = false;
-  let truncated = false;
-  let i = 0;
-
-  const clean = text.startsWith('\uFEFF') ? text.slice(1) : text;
-
-  const pushCell = (val: string) => {
-    if (row.length < maxCols) {
-      row.push(val);
-    } else {
-      truncated = true;
-    }
-  };
-
-  while (i < clean.length) {
-    const ch = clean[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (clean[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        inQuotes = false;
-        i++;
-        continue;
-      }
-      field += ch;
-      i++;
-      continue;
-    }
-
-    if (ch === '"' && field === '') {
-      inQuotes = true;
-      i++;
-      continue;
-    }
-
-    if (ch === delimiter) {
-      pushCell(field);
-      field = '';
-      i++;
-      continue;
-    }
-
-    if (ch === '\r' || ch === '\n') {
-      if (ch === '\r' && clean[i + 1] === '\n') {
-        i++;
-      }
-      pushCell(field);
-      field = '';
-      rows.push(row);
-      row = [];
-      i++;
-      if (rows.length >= maxRows) {
-        if (i < clean.length && clean.slice(i).trim() !== '') {
-          truncated = true;
-        }
-        return { rows, truncated };
-      }
-      continue;
-    }
-
-    field += ch;
-    i++;
-  }
-
-  if (field !== '' || row.length > 0) {
-    pushCell(field);
-    if (rows.length < maxRows) {
-      rows.push(row);
-    } else {
-      truncated = true;
-    }
-  }
-
-  while (rows.length > 0 && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') {
-    rows.pop();
-  }
-
-  return { rows, truncated };
-}
-
-export async function readBlobPreviewText(
-  blob: Blob,
-  maxBytes = MAX_TEXT_PREVIEW_BYTES
-): Promise<{ text: string; truncated: boolean; isBinary: boolean }> {
-  const truncated = blob.size > maxBytes;
-  const slice = truncated ? blob.slice(0, maxBytes) : blob;
-  const text = await slice.text();
-  const isBinary = text.slice(0, 1024).includes('\u0000');
-  return { text, truncated, isBinary };
 }
 
 export function classifyMime(mimeType: string, filename = ''): MediaKind {
@@ -480,28 +356,24 @@ export class VoiceRecorder {
 }
 
 export class BlobUrlRegistry {
-  private entries = new Map<string, Blob>();
+  private urls = new Set<string>();
 
   public create(blob: Blob): string {
     const url = URL.createObjectURL(blob);
-    this.entries.set(url, blob);
+    this.urls.add(url);
     return url;
   }
 
-  public get(url?: string): Blob | undefined {
-    return url ? this.entries.get(url) : undefined;
-  }
-
   public revoke(url?: string): void {
-    if (!url || !this.entries.has(url)) return;
+    if (!url || !this.urls.has(url)) return;
     URL.revokeObjectURL(url);
-    this.entries.delete(url);
+    this.urls.delete(url);
   }
 
   public revokeAll(): void {
-    for (const url of this.entries.keys()) {
+    for (const url of this.urls) {
       URL.revokeObjectURL(url);
     }
-    this.entries.clear();
+    this.urls.clear();
   }
 }

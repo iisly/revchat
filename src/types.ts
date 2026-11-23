@@ -23,6 +23,8 @@ export interface PeerInfo {
   inCall?: boolean;
   hasVideo?: boolean;
   isScreenShare?: boolean;
+  audioMuted?: boolean;
+  deafened?: boolean;
   lastSeenAt: number;
 }
 
@@ -92,4 +94,6 @@ export interface RemoteCallStream {
   stream: MediaStream;
   hasVideo: boolean;
   isScreenShare?: boolean;
+  audioMuted?: boolean;
+  deafened?: boolean;
 }

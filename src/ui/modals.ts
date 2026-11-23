@@ -1,26 +1,8 @@
 import { escapeAttr, escapeHtml } from '../markdown';
-import {
-  MAX_CSV_PREVIEW_ROWS,
-  MAX_TEXT_PREVIEW_BYTES,
-  formatFileSize,
-  parseDelimitedTable,
-} from '../media';
 import { copyTextToClipboard } from '../storage';
-import { REVCHAT_ASCII_BANNER, iconClose, iconCopy, iconDownload } from './icons';
+import { REVCHAT_ASCII_BANNER, iconClose, iconDownload } from './icons';
 
-export type ActiveModalType = 'none' | 'invite' | 'help' | 'lightbox' | 'file-preview';
-
-export interface FilePreviewState {
-  kind: 'text' | 'csv' | 'pdf';
-  name: string;
-  url: string;
-  sizeLabel: string;
-  text?: string;
-  truncated?: boolean;
-  csvViewMode?: 'table' | 'raw';
-  delimiter?: ',' | '\t';
-  error?: string;
-}
+export type ActiveModalType = 'none' | 'invite' | 'help' | 'lightbox';
 
 export interface ModalContext {
   activeModal: ActiveModalType;
@@ -29,13 +11,11 @@ export interface ModalContext {
   inviteQrSvg: string;
   lightboxUrl?: string;
   lightboxName?: string;
-  filePreview?: FilePreviewState;
 }
 
 export interface ModalCallbacks {
   onClose: () => void;
   onToast: (msg: string) => void;
-  onToggleCsvMode?: () => void;
 }
 
 export function renderModalDOM(
@@ -63,7 +43,7 @@ export function renderModalDOM(
         <div class="modal" role="dialog" aria-modal="true" aria-label="Invite to room">
           <div class="modal-header">
             <span>INVITE TO #${escapeHtml(ctx.roomId)}</span>
-            <button type="button" class="small icon-btn" id="btn-modal-close" aria-label="Close">${iconClose(14)}</button>
+            <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(14)}</button>
           </div>
           <div class="modal-body">
             <div class="qr-box">${ctx.inviteQrSvg}</div>
@@ -116,8 +96,8 @@ export function renderModalDOM(
           <div class="modal-header">
             <span>${safeName}</span>
             <div class="tool-group">
-              <a class="btn small" href="${safeUrl}" download="${escapeAttr(ctx.lightboxName || 'image')}">${iconDownload(13)}<span>SAVE</span></a>
-              <button type="button" class="small icon-btn" id="btn-modal-close" aria-label="Close">${iconClose(14)}</button>
+              <a class="btn small" href="${safeUrl}" download="${escapeAttr(ctx.lightboxName || 'image')}" title="Save ${escapeAttr(ctx.lightboxName || 'image')}">${iconDownload(13)}<span>SAVE</span></a>
+              <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(14)}</button>
             </div>
           </div>
           <div class="lightbox-body">
@@ -130,116 +110,13 @@ export function renderModalDOM(
     return;
   }
 
-  if (ctx.activeModal === 'file-preview' && ctx.filePreview) {
-    const p = ctx.filePreview;
-    const safeUrl = p.url.startsWith('blob:') ? escapeAttr(p.url) : '';
-    const safeName = escapeHtml(p.name);
-    const safeAttrName = escapeAttr(p.name);
-
-    let bodyHtml = '';
-    if (p.error) {
-      bodyHtml = `<div class="preview-error-box">${escapeHtml(p.error)}</div>`;
-    } else if (p.kind === 'pdf') {
-      if (!safeUrl) {
-        bodyHtml = `<div class="preview-error-box">Could not preview PDF file.</div>`;
-      } else {
-        bodyHtml = `
-          <iframe class="preview-pdf-frame" src="${safeUrl}" title="${safeAttrName}"></iframe>
-          <div class="preview-pdf-hint">If the PDF does not render inline on mobile, tap <b>OPEN</b> or <b>SAVE</b> above.</div>
-        `;
-      }
-    } else if (p.kind === 'csv' && p.csvViewMode !== 'raw') {
-      const parsed = parseDelimitedTable(p.text || '', p.delimiter || ',');
-      if (parsed.rows.length === 0) {
-        bodyHtml = `<div class="preview-error-box">Empty table file.</div>`;
-      } else {
-        const colCount = Math.max(1, ...parsed.rows.map((r) => r.length));
-        const renderRow = (row: string[], tag: 'th' | 'td') =>
-          Array.from(
-            { length: colCount },
-            (_, idx) => `<${tag}>${escapeHtml(row[idx] ?? '')}</${tag}>`
-          ).join('');
-        const noticeHtml =
-          p.truncated || parsed.truncated
-            ? `<div class="preview-notice">Preview limited to first ${MAX_CSV_PREVIEW_ROWS} rows / ${formatFileSize(MAX_TEXT_PREVIEW_BYTES)}. Use SAVE for the full file.</div>`
-            : '';
-        bodyHtml = `
-          ${noticeHtml}
-          <div class="preview-table-wrap">
-            <table class="preview-csv-table">
-              <thead><tr>${renderRow(parsed.rows[0], 'th')}</tr></thead>
-              <tbody>${parsed.rows
-                .slice(1)
-                .map((row) => `<tr>${renderRow(row, 'td')}</tr>`)
-                .join('')}</tbody>
-            </table>
-          </div>
-        `;
-      }
-    } else {
-      const noticeHtml = p.truncated
-        ? `<div class="preview-notice">Preview limited to first ${formatFileSize(MAX_TEXT_PREVIEW_BYTES)}. Use SAVE for the full file.</div>`
-        : '';
-      bodyHtml = `
-        ${noticeHtml}
-        <pre class="preview-code-pre"><code>${escapeHtml(p.text || '')}</code></pre>
-      `;
-    }
-
-    modalRoot.innerHTML = `
-      <div class="modal-backdrop" id="modal-backdrop">
-        <div class="modal file-preview-modal" role="dialog" aria-modal="true" aria-label="File Preview">
-          <div class="modal-header">
-            <span class="modal-title-ellipsis" title="${safeAttrName}">${safeName} <small class="modal-size-tag">${escapeHtml(p.sizeLabel)}</small></span>
-            <div class="tool-group">
-              ${
-                p.kind === 'csv' && !p.error
-                  ? `<button type="button" class="small" id="btn-preview-csv-toggle">${p.csvViewMode === 'raw' ? 'TABLE' : 'RAW'}</button>`
-                  : ''
-              }
-              ${
-                (p.kind === 'text' || p.kind === 'csv') && p.text !== undefined && !p.error
-                  ? `<button type="button" class="small" id="btn-preview-copy">${iconCopy(13)}<span>COPY</span></button>`
-                  : ''
-              }
-              ${
-                p.kind === 'pdf' && safeUrl
-                  ? `<a class="btn small" href="${safeUrl}" target="_blank" rel="noopener noreferrer">OPEN</a>`
-                  : ''
-              }
-              ${
-                safeUrl
-                  ? `<a class="btn small" href="${safeUrl}" download="${safeAttrName}">${iconDownload(13)}<span>SAVE</span></a>`
-                  : ''
-              }
-              <button type="button" class="small icon-btn" id="btn-modal-close" aria-label="Close">${iconClose(14)}</button>
-            </div>
-          </div>
-          <div class="file-preview-body">
-            ${bodyHtml}
-          </div>
-        </div>
-      </div>
-    `;
-    modalRoot.querySelector('#btn-preview-copy')?.addEventListener('click', () => {
-      void copyTextToClipboard(p.text || '').then((ok) =>
-        callbacks.onToast(ok ? 'File contents copied to clipboard' : 'Could not copy file contents')
-      );
-    });
-    modalRoot.querySelector('#btn-preview-csv-toggle')?.addEventListener('click', () => {
-      callbacks.onToggleCsvMode?.();
-    });
-    bindBaseClose();
-    return;
-  }
-
   // Help Modal
   modalRoot.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
-      <div class="modal help-modal" role="dialog" aria-modal="true" aria-label="Guide and Commands">
+      <div class="modal help-modal" role="dialog" aria-modal="true" aria-label="Guide & Commands">
         <div class="modal-header">
           <span class="modal-brand-title"><img src="./favicon.svg" class="brand-logo" width="18" height="18" alt="" /><span>Guide & Commands</span></span>
-          <button type="button" class="small icon-btn" id="btn-modal-close" aria-label="Close">${iconClose(14)}</button>
+          <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(14)}</button>
         </div>
         <div class="modal-body help-modal-body">
           <pre class="ascii-banner">

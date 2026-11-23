@@ -299,7 +299,7 @@ export class ComposerController {
           type="button"
           class="composer-tool-btn"
           id="btn-plus-drawer"
-          title="Call, Voice, File, Games"
+          title="Actions (Call, Voice, File, Game)"
           aria-label="Actions"
           aria-expanded="false"
         >${iconPlus(18)}</button>
@@ -312,8 +312,8 @@ export class ComposerController {
           type="button"
           class="composer-tool-btn"
           id="btn-emote-picker"
-          title="ASCII Emotes"
-          aria-label="ASCII Emotes"
+          title="ASCII emotes"
+          aria-label="ASCII emotes"
           aria-expanded="false"
         >${iconSmile(18)}</button>
         <button type="submit" class="primary composer-tool-btn send-btn" title="Send message" aria-label="Send message">${iconSend(17)}</button>
@@ -427,7 +427,7 @@ export class ComposerController {
         <div class="composer-popover" id="composer-popover">
           <div class="popover-header">
             <span>ASCII EMOTES</span>
-            <button type="button" class="small icon-btn" id="btn-popover-close" aria-label="Close">${iconClose(14)}</button>
+            <button type="button" class="small icon-btn" id="btn-popover-close" title="Close" aria-label="Close">${iconClose(14)}</button>
           </div>
           <div class="emote-grid">
             ${ASCII_EMOTE_LIST.map(
@@ -456,7 +456,7 @@ export class ComposerController {
         <div class="composer-popover" id="composer-popover">
           <div class="popover-header">
             <span>ACTIONS</span>
-            <button type="button" class="small icon-btn" id="btn-popover-close" aria-label="Close">${iconClose(14)}</button>
+            <button type="button" class="small icon-btn" id="btn-popover-close" title="Close" aria-label="Close">${iconClose(14)}</button>
           </div>
           <div class="plus-grid">
             <button type="button" class="plus-tile" data-plus="call">
@@ -510,7 +510,7 @@ export class ComposerController {
           <div class="popover-header">
             <button type="button" class="small icon-btn" id="btn-plus-back" title="Back" aria-label="Back">${iconArrowLeft(14)}</button>
             <span>GAMES</span>
-            <button type="button" class="small icon-btn" id="btn-popover-close" aria-label="Close">${iconClose(14)}</button>
+            <button type="button" class="small icon-btn" id="btn-popover-close" title="Close" aria-label="Close">${iconClose(14)}</button>
           </div>
           <div class="games-hub">
             <div class="games-row-instant">

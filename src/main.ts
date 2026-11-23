@@ -19,13 +19,11 @@ import { escapeAttr, escapeHtml } from './markdown';
 import {
   BlobUrlRegistry,
   MAX_MEDIA_BYTES,
-  classifyFilePreview,
   classifyMime,
   compressImageIfNeeded,
   extractClipboardFiles,
-  formatFileSize,
   inferMimeFromFilename,
-  readBlobPreviewText,
+  resolveTextBlobMime,
 } from './media';
 import { NotificationManager } from './notifications';
 import { P2PEngine } from './p2p-engine';
@@ -74,7 +72,7 @@ import {
   renderSingleMessageHtml,
   shouldGroupMessages,
 } from './ui/messages';
-import { ActiveModalType, FilePreviewState, renderModalDOM } from './ui/modals';
+import { ActiveModalType, renderModalDOM } from './ui/modals';
 
 const MAX_MEMORY_MESSAGES = 1000;
 
@@ -107,7 +105,6 @@ class RevChatApp {
   private inviteQrSvg = '';
   private lightboxUrl?: string;
   private lightboxName?: string;
-  private filePreview?: FilePreviewState;
   private searchOpen = false;
   private searchQuery = '';
   private replyTo: ChatMessage['replyTo'] | undefined = undefined;
@@ -345,11 +342,10 @@ class RevChatApp {
     const themeBtn = this.root.querySelector('#btn-theme');
     if (!themeBtn) return;
     const isDark = this.profile.theme === 'dark';
-    themeBtn.innerHTML = isDark ? iconSun(16) : iconMoon(16);
-    themeBtn.setAttribute(
-      'title',
-      isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'
-    );
+    themeBtn.innerHTML = isDark ? iconSun(15) : iconMoon(15);
+    const label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    themeBtn.setAttribute('title', label);
+    themeBtn.setAttribute('aria-label', label);
   }
 
   private setTheme(target?: 'dark' | 'light', showBanner = false): void {
@@ -398,7 +394,9 @@ class RevChatApp {
     const nickInput = this.root.querySelector('#input-nick') as HTMLInputElement | null;
     if (nickInput) nickInput.value = val;
     this.updateCallDockDOM();
-    this.showToast(`Nickname: ${val}`);
+    if (this.mobileDrawerOpen) {
+      this.showToast(`Nickname: ${val}`);
+    }
     return true;
   }
 
@@ -649,8 +647,8 @@ class RevChatApp {
       btn.innerHTML = this.profile.soundMuted ? iconVolumeOff(15) : iconVolumeOn(15);
       btn.classList.toggle('muted', this.profile.soundMuted);
       const label = this.profile.soundMuted
-        ? 'Sound Muted (click to unmute)'
-        : 'Sound On (click to mute)';
+        ? 'Unmute notification sound'
+        : 'Mute notification sound';
       btn.setAttribute('title', label);
       btn.setAttribute('aria-label', label);
     }
@@ -798,6 +796,7 @@ class RevChatApp {
       }
 
       const stableBytes = await blobToSend.arrayBuffer();
+      mime = resolveTextBlobMime(stableBytes, mime, file.name);
       const stableBlob = new Blob([stableBytes], { type: mime });
 
       if (stableBlob.size > MAX_MEDIA_BYTES) {
@@ -908,7 +907,7 @@ class RevChatApp {
         <div class="drawer-backdrop" id="drawer-backdrop" style="display:${this.mobileDrawerOpen ? 'block' : 'none'};"></div>
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
-            <a href="./" class="brand" id="brand-logo" title="revchat">
+            <a href="./" class="brand" id="brand-logo" title="Reload revchat">
               <img src="./favicon.svg" class="brand-logo" width="22" height="22" alt="" />
               <span class="brand-name">revchat</span>
             </a>
@@ -917,7 +916,7 @@ class RevChatApp {
                 <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
                 <span id="sig-label">${this.getSignalingBadgeText()}</span>
               </span>
-              <button type="button" class="small icon-btn mobile-only" id="btn-close-drawer" title="Close Menu" aria-label="Close menu">${iconClose(15)}</button>
+              <button type="button" class="small icon-btn mobile-only" id="btn-close-drawer" title="Close menu" aria-label="Close menu">${iconClose(15)}</button>
             </div>
           </div>
 
@@ -969,10 +968,10 @@ class RevChatApp {
                 type="button"
                 class="small icon-btn"
                 id="btn-theme"
-                title="${this.profile.theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}"
-                aria-label="Toggle theme"
-              >${this.profile.theme === 'dark' ? iconSun(16) : iconMoon(16)}</button>
-              <button type="button" class="small icon-btn" id="btn-help" title="Commands & Help" aria-label="Help">${iconHelp(16)}</button>
+                title="${this.profile.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}"
+                aria-label="${this.profile.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}"
+              >${this.profile.theme === 'dark' ? iconSun(15) : iconMoon(15)}</button>
+              <button type="button" class="small icon-btn" id="btn-help" title="Guide & Commands" aria-label="Guide & Commands">${iconHelp(15)}</button>
             </div>
           </div>
         </aside>
@@ -981,24 +980,24 @@ class RevChatApp {
         <main class="chat-pane" id="chat-pane">
           <header class="chat-topbar">
             <div class="topbar-left">
-              <button type="button" class="small icon-btn mobile-only" id="btn-open-drawer" title="Open Menu" aria-label="Open menu">${iconMenu(15)}</button>
+              <button type="button" class="small icon-btn mobile-only" id="btn-open-drawer" title="Open menu" aria-label="Open menu">${iconMenu(15)}</button>
               <span class="room-badge" id="topbar-room-title">#${escapeHtml(this.roomId)}</span>
               <span class="badge ${this.peers.length > 0 ? 'ok' : ''}" id="topbar-peer-badge">${this.peers.length} online</span>
             </div>
             <div class="topbar-actions">
-              <button type="button" class="small primary icon-btn" id="btn-topbar-invite" title="Invite (QR Code & Link)" aria-label="Invite">${iconShare(15)}</button>
+              <button type="button" class="small primary icon-btn" id="btn-topbar-invite" title="Invite to room" aria-label="Invite to room">${iconShare(15)}</button>
               <button
                 type="button"
                 class="small icon-btn ${this.profile.soundMuted ? 'muted' : ''}"
                 id="btn-mute-sound"
-                title="${this.profile.soundMuted ? 'Sound Muted (click to unmute)' : 'Sound On (click to mute)'}"
-                aria-label="${this.profile.soundMuted ? 'Sound Muted (click to unmute)' : 'Sound On (click to mute)'}"
+                title="${this.profile.soundMuted ? 'Unmute notification sound' : 'Mute notification sound'}"
+                aria-label="${this.profile.soundMuted ? 'Unmute notification sound' : 'Mute notification sound'}"
               >${this.profile.soundMuted ? iconVolumeOff(15) : iconVolumeOn(15)}</button>
               <button
                 type="button"
                 class="small icon-btn ${this.searchOpen ? 'active' : ''}"
                 id="btn-toggle-search"
-                title="Search Messages"
+                title="Search messages"
                 aria-label="Search messages"
               >${iconSearch(15)}</button>
             </div>
@@ -1096,7 +1095,7 @@ class RevChatApp {
               class="small ${isWhispering ? 'primary' : ''}"
               data-whisper-id="${escapeAttr(p.peerId)}"
               data-whisper-name="${escapeAttr(p.nickname)}"
-              title="Send private 1:1 DM"
+              title="${isWhispering ? 'Exit DM mode' : 'Send private DM'}"
             >DM</button>
           </div>
         `;
@@ -1211,6 +1210,7 @@ class RevChatApp {
       {
         onJoinCall: () => void this.startCallFlow(false),
         onToggleMute: () => this.engine.toggleMute(),
+        onOutputMuteChange: (muted) => this.engine.setCallOutputMuted(muted),
         onToggleVideo: () =>
           void this.engine.toggleVideo().catch((err: any) =>
             this.showToast(err?.message || 'Camera action failed.')
@@ -1336,56 +1336,6 @@ class RevChatApp {
     this.renderModal();
   }
 
-  private async openFilePreviewModal(messageId: string): Promise<void> {
-    const msg = this.messageMap.get(messageId);
-    const att = msg?.attachment;
-    if (!att?.url || !att.url.startsWith('blob:')) return;
-
-    const kind = classifyFilePreview(att.mimeType, att.name);
-    if (kind === 'none') return;
-
-    if (kind === 'pdf') {
-      this.filePreview = {
-        kind: 'pdf',
-        name: att.name,
-        url: att.url,
-        sizeLabel: formatFileSize(att.size),
-      };
-      this.activeModal = 'file-preview';
-      this.renderModal();
-      return;
-    }
-
-    const blob = this.blobs.get(att.url);
-    if (!blob) {
-      this.showToast('Could not preview file');
-      return;
-    }
-
-    try {
-      const { text, truncated, isBinary } = await readBlobPreviewText(blob);
-      const delimiter: ',' | '\t' =
-        att.name.toLowerCase().endsWith('.tsv') || att.mimeType === 'text/tab-separated-values'
-          ? '\t'
-          : ',';
-      this.filePreview = {
-        kind,
-        name: att.name,
-        url: att.url,
-        sizeLabel: formatFileSize(att.size),
-        text: isBinary ? undefined : text,
-        truncated,
-        csvViewMode: 'table',
-        delimiter,
-        error: isBinary ? 'Binary content detected — use SAVE to download.' : undefined,
-      };
-      this.activeModal = 'file-preview';
-      this.renderModal();
-    } catch {
-      this.showToast('Could not preview file');
-    }
-  }
-
   private renderModal(): void {
     const modalRoot = this.root.querySelector('#modal-root') as HTMLElement | null;
     renderModalDOM(
@@ -1397,7 +1347,6 @@ class RevChatApp {
         inviteQrSvg: this.inviteQrSvg,
         lightboxUrl: this.lightboxUrl,
         lightboxName: this.lightboxName,
-        filePreview: this.filePreview,
       },
       {
         onClose: () => {
@@ -1405,13 +1354,6 @@ class RevChatApp {
           this.renderModal();
         },
         onToast: (msg) => this.showToast(msg),
-        onToggleCsvMode: () => {
-          if (this.filePreview && this.filePreview.kind === 'csv') {
-            this.filePreview.csvViewMode =
-              this.filePreview.csvViewMode === 'raw' ? 'table' : 'raw';
-            this.renderModal();
-          }
-        },
       }
     );
   }
@@ -1929,15 +1871,6 @@ class RevChatApp {
         return;
       }
 
-      if (!targetEl.closest('a[download]')) {
-        const previewEl = targetEl.closest('[data-preview-id]');
-        if (previewEl) {
-          const id = previewEl.getAttribute('data-preview-id') || '';
-          if (id) void this.openFilePreviewModal(id);
-          return;
-        }
-      }
-
       const cancelTransferBtn = targetEl.closest('[data-cancel-transfer]');
       if (cancelTransferBtn) {
         const tid = cancelTransferBtn.getAttribute('data-cancel-transfer') || '';
@@ -2033,7 +1966,7 @@ class RevChatApp {
       if (!window.matchMedia('(hover: hover)').matches) {
         if (
           targetEl.closest(
-            'button, a, video, audio, [data-lightbox-url], [data-preview-id], .reaction-picker, .msg-toolbar'
+            'button, a, video, audio, [data-lightbox-url], .reaction-picker, .msg-toolbar'
           ) ||
           window.getSelection()?.toString()
         ) {

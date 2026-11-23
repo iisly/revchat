@@ -35,6 +35,7 @@ export interface CallDockState {
 export interface CallDockCallbacks {
   onJoinCall: () => void;
   onToggleMute: () => void;
+  onOutputMuteChange: (muted: boolean) => void;
   onToggleVideo: () => void;
   onSwitchCamera: () => void;
   onToggleScreenShare: () => void;
@@ -46,6 +47,8 @@ interface VideoEntry {
   label: string;
   isSelf: boolean;
   isScreenShare: boolean;
+  audioMuted: boolean;
+  deafened: boolean;
   stream: MediaStream;
 }
 
@@ -333,8 +336,22 @@ export class CallDockController {
     });
   }
 
+  private notifyOutputMuteAndSync(prevMuted: boolean): void {
+    const nextMuted = this.isAudioOutputMuted();
+    this.applyAudioOutputState();
+    if (this.uiSlotEl && this.lastState) {
+      this.syncControlsInPlace(this.uiSlotEl, this.lastState);
+      this.syncChipsInPlace(this.uiSlotEl, this.lastState);
+      this.syncTileLabelsInPlace(this.uiSlotEl, this.buildVideoEntries(this.lastState));
+    }
+    if (prevMuted !== nextMuted) {
+      this.lastCallbacks?.onOutputMuteChange(nextMuted);
+    }
+  }
+
   private toggleCallAudioMute(): void {
-    if (this.isAudioOutputMuted()) {
+    const prevMuted = this.isAudioOutputMuted();
+    if (prevMuted) {
       this.callAudioMuted = false;
       if (this.callVolume <= 0) {
         this.callVolume = this.lastNonZeroVolume > 0 ? this.lastNonZeroVolume : 1;
@@ -345,14 +362,11 @@ export class CallDockController {
       }
       this.callAudioMuted = true;
     }
-    this.applyAudioOutputState();
-    if (this.uiSlotEl && this.lastState) {
-      this.syncControlsInPlace(this.uiSlotEl, this.lastState);
-      this.syncChipsInPlace(this.uiSlotEl, this.lastState);
-    }
+    this.notifyOutputMuteAndSync(prevMuted);
   }
 
   private setCallVolume(pct: number): void {
+    const prevMuted = this.isAudioOutputMuted();
     const clampedPct = Math.max(0, Math.min(100, Math.round(pct)));
     const nextVol = clampedPct / 100;
     this.callVolume = nextVol;
@@ -362,11 +376,7 @@ export class CallDockController {
     } else {
       this.callAudioMuted = true;
     }
-    this.applyAudioOutputState();
-    if (this.uiSlotEl && this.lastState) {
-      this.syncControlsInPlace(this.uiSlotEl, this.lastState);
-      this.syncChipsInPlace(this.uiSlotEl, this.lastState);
-    }
+    this.notifyOutputMuteAndSync(prevMuted);
   }
 
   private isNativeFullscreen(): boolean {
@@ -427,40 +437,138 @@ export class CallDockController {
   private renderTileLabelInner(v: VideoEntry): string {
     const kindIcon = v.isScreenShare ? iconMonitor(12) : iconVideo(12);
     const kindTitle = v.isScreenShare ? 'Screen share' : 'Camera';
-    return `<span class="tile-kind-icon" title="${kindTitle}">${kindIcon}</span><span class="tile-name">${escapeHtml(v.label)}</span>`;
+    const statusIcons: string[] = [];
+    if (v.audioMuted) {
+      statusIcons.push(`<span class="tile-status-icon" title="Mic muted">${iconMicOff(11)}</span>`);
+    }
+    if (v.deafened) {
+      statusIcons.push(
+        `<span class="tile-status-icon" title="Call audio muted">${iconVolumeOff(11)}</span>`
+      );
+    }
+    return `<span class="tile-kind-icon" title="${kindTitle}">${kindIcon}</span><span class="tile-name">${escapeHtml(v.label)}</span>${statusIcons.join('')}`;
   }
 
-  private renderParticipantChipsHtml(state: CallDockState): string {
-    const outputMuted = this.isAudioOutputMuted();
-    const selfIcons: string[] = [];
+  private getRemoteChipEntries(state: CallDockState): Array<{
+    peerId: string;
+    nickname: string;
+    hasVideo: boolean;
+    isScreenShare: boolean;
+    audioMuted: boolean;
+    deafened: boolean;
+  }> {
+    const peerById = new Map(state.peers.map((p) => [p.peerId, p]));
+    const seen = new Set<string>();
+    const list: Array<{
+      peerId: string;
+      nickname: string;
+      hasVideo: boolean;
+      isScreenShare: boolean;
+      audioMuted: boolean;
+      deafened: boolean;
+    }> = [];
+
+    for (const rs of state.remoteStreams) {
+      seen.add(rs.peerId);
+      const peer = peerById.get(rs.peerId);
+      list.push({
+        peerId: rs.peerId,
+        nickname: peer?.nickname || rs.nickname,
+        hasVideo: rs.hasVideo,
+        isScreenShare: Boolean(rs.isScreenShare),
+        audioMuted: Boolean(peer?.audioMuted ?? rs.audioMuted),
+        deafened: Boolean(peer?.deafened ?? rs.deafened),
+      });
+    }
+
+    for (const p of state.peersInCall) {
+      if (seen.has(p.peerId)) continue;
+      list.push({
+        peerId: p.peerId,
+        nickname: p.nickname,
+        hasVideo: Boolean(p.hasVideo),
+        isScreenShare: Boolean(p.isScreenShare),
+        audioMuted: Boolean(p.audioMuted),
+        deafened: Boolean(p.deafened),
+      });
+    }
+
+    return list;
+  }
+
+  private buildVideoEntries(state: CallDockState): VideoEntry[] {
+    if (!state.localStream) return [];
+    const peerById = new Map(state.peers.map((p) => [p.peerId, p]));
+    const entries: VideoEntry[] = [];
     if (state.localVideoEnabled) {
-      selfIcons.push(
-        `<span class="chip-icon" title="${state.isScreenShare ? 'Sharing screen' : 'Camera on'}">${
-          state.isScreenShare ? iconMonitor(12) : iconVideo(12)
+      entries.push({
+        id: 'self',
+        label: `${state.myNickname} (You)`,
+        isSelf: true,
+        isScreenShare: state.isScreenShare,
+        audioMuted: state.localMuted,
+        deafened: this.isAudioOutputMuted(),
+        stream: this.getSelfPreviewStream(state.localStream),
+      });
+    }
+    for (const rs of state.remoteStreams) {
+      if (!rs.hasVideo) continue;
+      const peer = peerById.get(rs.peerId);
+      entries.push({
+        id: rs.peerId,
+        label: peer?.nickname || rs.nickname,
+        isSelf: false,
+        isScreenShare: Boolean(rs.isScreenShare),
+        audioMuted: Boolean(peer?.audioMuted ?? rs.audioMuted),
+        deafened: Boolean(peer?.deafened ?? rs.deafened),
+        stream: rs.stream,
+      });
+    }
+    return entries;
+  }
+
+  private renderStatusIconsHtml(
+    hasVideo: boolean,
+    isScreenShare: boolean,
+    audioMuted: boolean,
+    deafened: boolean
+  ): string {
+    const icons: string[] = [];
+    if (hasVideo) {
+      icons.push(
+        `<span class="chip-icon" title="${isScreenShare ? 'Sharing screen' : 'Camera on'}">${
+          isScreenShare ? iconMonitor(12) : iconVideo(12)
         }</span>`
       );
     }
-    if (state.localMuted) {
-      selfIcons.push(`<span class="chip-icon" title="Mic muted">${iconMicOff(12)}</span>`);
+    if (audioMuted) {
+      icons.push(`<span class="chip-icon" title="Mic muted">${iconMicOff(12)}</span>`);
     }
-    if (outputMuted) {
-      selfIcons.push(
-        `<span class="chip-icon" title="Call audio muted">${iconVolumeOff(12)}</span>`
-      );
+    if (deafened) {
+      icons.push(`<span class="chip-icon" title="Call audio muted">${iconVolumeOff(12)}</span>`);
     }
+    return icons.join('');
+  }
 
-    const remoteChips = state.remoteStreams.map((rs) => {
-      const name = this.resolvePeerNickname(rs.peerId, rs.nickname, state);
-      const mediaIcon = rs.isScreenShare
-        ? `<span class="chip-icon" title="Sharing screen">${iconMonitor(12)}</span>`
-        : rs.hasVideo
-          ? `<span class="chip-icon" title="Camera on">${iconVideo(12)}</span>`
-          : '';
-      return `<span class="call-chip">${escapeHtml(name)}${mediaIcon}</span>`;
+  private renderParticipantChipsHtml(state: CallDockState): string {
+    const selfIcons = this.renderStatusIconsHtml(
+      state.localVideoEnabled,
+      state.isScreenShare,
+      state.localMuted,
+      this.isAudioOutputMuted()
+    );
+    const remoteChips = this.getRemoteChipEntries(state).map((r) => {
+      const icons = this.renderStatusIconsHtml(
+        r.hasVideo,
+        r.isScreenShare,
+        r.audioMuted,
+        r.deafened
+      );
+      return `<span class="call-chip">${escapeHtml(r.nickname)}${icons}</span>`;
     });
 
     return [
-      `<span class="call-chip self">${escapeHtml(state.myNickname)}${selfIcons.join('')}</span>`,
+      `<span class="call-chip self">${escapeHtml(state.myNickname)}${selfIcons}</span>`,
       ...remoteChips,
     ].join('');
   }
@@ -471,17 +579,22 @@ export class CallDockController {
 
   private getChipsSig(state: CallDockState): string {
     const outputMuted = this.isAudioOutputMuted() ? 1 : 0;
-    const remotes = state.remoteStreams
+    const remotes = this.getRemoteChipEntries(state)
       .map(
-        (rs) =>
-          `${rs.peerId}:${this.resolvePeerNickname(rs.peerId, rs.nickname, state)}:${rs.hasVideo ? 1 : 0}:${rs.isScreenShare ? 1 : 0}`
+        (r) =>
+          `${r.peerId}:${r.nickname}:${r.hasVideo ? 1 : 0}:${r.isScreenShare ? 1 : 0}:${r.audioMuted ? 1 : 0}:${r.deafened ? 1 : 0}`
       )
       .join('|');
     return `${state.myNickname}:${state.localVideoEnabled ? 1 : 0}:${state.isScreenShare ? 1 : 0}:${state.localMuted ? 1 : 0}:${outputMuted};${remotes}`;
   }
 
   private getTileLabelsSig(videoEntries: VideoEntry[]): string {
-    return videoEntries.map((v) => `${v.id}:${v.label}:${v.isScreenShare ? 1 : 0}`).join('|');
+    return videoEntries
+      .map(
+        (v) =>
+          `${v.id}:${v.label}:${v.isScreenShare ? 1 : 0}:${v.audioMuted ? 1 : 0}:${v.deafened ? 1 : 0}`
+      )
+      .join('|');
   }
 
   private syncControlsInPlace(slot: HTMLElement, state: CallDockState): void {
@@ -496,7 +609,7 @@ export class CallDockController {
       const label = state.localMuted ? 'Unmute mic' : 'Mute mic';
       muteBtn.setAttribute('title', label);
       muteBtn.setAttribute('aria-label', label);
-      muteBtn.innerHTML = state.localMuted ? iconMicOff(16) : iconMic(16);
+      muteBtn.innerHTML = state.localMuted ? iconMicOff(15) : iconMic(15);
     }
 
     const speakerMuted = this.isAudioOutputMuted();
@@ -507,7 +620,7 @@ export class CallDockController {
       const label = speakerMuted ? 'Unmute call audio' : 'Mute call audio';
       speakerBtn.setAttribute('title', label);
       speakerBtn.setAttribute('aria-label', label);
-      speakerBtn.innerHTML = speakerMuted ? iconVolumeOff(16) : iconVolumeOn(16);
+      speakerBtn.innerHTML = speakerMuted ? iconVolumeOff(15) : iconVolumeOn(15);
     }
 
     const slider = slot.querySelector('#call-volume-slider') as HTMLInputElement | null;
@@ -574,8 +687,8 @@ export class CallDockController {
             type="button"
             class="tile-tool-btn"
             data-focus-tile="${safeId}"
-            title="${isFocused ? 'Exit Theater Mode (ESC)' : 'Expand View'}"
-            aria-label="${isFocused ? 'Exit Theater Mode' : 'Expand View'}"
+            title="${isFocused ? 'Exit theater mode (ESC)' : 'Theater mode'}"
+            aria-label="${isFocused ? 'Exit theater mode' : 'Theater mode'}"
           >${isFocused ? iconClose(14) : iconExpand(14)}</button>
           <button
             type="button"
@@ -617,7 +730,6 @@ export class CallDockController {
       canSwitchCamera,
       remoteStreams,
       peersInCall,
-      myNickname,
     } = state;
 
     this.syncAudioPool(remoteStreams, Boolean(localStream));
@@ -678,26 +790,7 @@ export class CallDockController {
     }
 
     // Active call
-    const videoEntries: VideoEntry[] = [];
-    if (localVideoEnabled) {
-      videoEntries.push({
-        id: 'self',
-        label: `${myNickname} (You)`,
-        isSelf: true,
-        isScreenShare,
-        stream: this.getSelfPreviewStream(localStream),
-      });
-    }
-    for (const rs of remoteStreams) {
-      if (!rs.hasVideo) continue;
-      videoEntries.push({
-        id: rs.peerId,
-        label: this.resolvePeerNickname(rs.peerId, rs.nickname, state),
-        isSelf: false,
-        isScreenShare: Boolean(rs.isScreenShare),
-        stream: rs.stream,
-      });
-    }
+    const videoEntries = this.buildVideoEntries(state);
 
     const activeIds = new Set(videoEntries.map((v) => v.id));
     if (this.pinnedPeerId && !activeIds.has(this.pinnedPeerId)) {
@@ -840,7 +933,7 @@ export class CallDockController {
         title="${speakerLabel}"
         aria-label="${speakerLabel}"
         aria-pressed="${speakerMuted}"
-      >${speakerMuted ? iconVolumeOff(16) : iconVolumeOn(16)}</button>
+      >${speakerMuted ? iconVolumeOff(15) : iconVolumeOn(15)}</button>
     `;
 
     const audioOutputGroupHtml = this.supportsAudioVolume
@@ -882,7 +975,7 @@ export class CallDockController {
               title="${micLabel}"
               aria-label="${micLabel}"
               aria-pressed="${localMuted}"
-            >${localMuted ? iconMicOff(16) : iconMic(16)}</button>
+            >${localMuted ? iconMicOff(15) : iconMic(15)}</button>
             ${audioOutputGroupHtml}
             <button
               type="button"
@@ -891,7 +984,7 @@ export class CallDockController {
               title="${camLabel}"
               aria-label="${camLabel}"
               aria-pressed="${camActive}"
-            >${camActive ? iconVideo(16) : iconVideoOff(16)}</button>
+            >${camActive ? iconVideo(15) : iconVideoOff(15)}</button>
             ${
               canFlipCam
                 ? `<button type="button" class="call-ctrl-btn" id="btn-call-flip" title="Switch camera" aria-label="Switch camera">${iconRefresh(15)}</button>`
@@ -899,7 +992,7 @@ export class CallDockController {
             }
             ${
               canScreen
-                ? `<button type="button" class="call-ctrl-btn ${isScreenShare ? 'active' : ''}" id="btn-call-screen" title="${screenLabel}" aria-label="${screenLabel}" aria-pressed="${isScreenShare}">${iconMonitor(16)}</button>`
+                ? `<button type="button" class="call-ctrl-btn ${isScreenShare ? 'active' : ''}" id="btn-call-screen" title="${screenLabel}" aria-label="${screenLabel}" aria-pressed="${isScreenShare}">${iconMonitor(15)}</button>`
                 : ''
             }
             ${
@@ -910,18 +1003,17 @@ export class CallDockController {
             `
                 : hasAnyVideo
                 ? `<button type="button" class="call-ctrl-btn" id="btn-call-collapse" title="${collapseLabel}" aria-label="${collapseLabel}" aria-pressed="${this.stageCollapsed}">${
-                    this.stageCollapsed ? iconEye(16) : iconEyeOff(16)
+                    this.stageCollapsed ? iconEye(15) : iconEyeOff(15)
                   }</button>`
                 : ''
             }
-            <span class="call-ctrl-sep" aria-hidden="true"></span>
             <button
               type="button"
               class="call-ctrl-btn leave"
               id="btn-call-leave"
               title="Leave call"
               aria-label="Leave call"
-            >${iconPhoneOff(16)}</button>
+            >${iconPhoneOff(15)}</button>
           </div>
         </div>
       </div>

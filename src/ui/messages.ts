@@ -1,12 +1,12 @@
 import { REACTION_EMOJIS } from '../commands';
 import { escapeAttr, escapeHtml, formatMessageBody } from '../markdown';
-import { classifyFilePreview, formatFileSize } from '../media';
+import { canOpenFileInBrowser, formatFileSize } from '../media';
 import { ChatMessage } from '../types';
 import {
   REVCHAT_ASCII_BANNER,
   iconCopy,
   iconDownload,
-  iconEye,
+  iconExternalLink,
   iconMic,
   iconPaperclip,
   iconReply,
@@ -126,18 +126,17 @@ function renderAttachmentHtml(m: ChatMessage): string {
     `;
   }
 
-  const previewKind = classifyFilePreview(att.mimeType, att.name);
-  if (previewKind !== 'none') {
+  if (canOpenFileInBrowser(att.mimeType, att.name)) {
     return `
-      <div class="msg-file-card previewable" data-preview-id="${escapeAttr(m.id)}">
+      <div class="msg-file-card">
         <span class="file-tag" aria-label="File attachment">${iconPaperclip(14)}</span>
         <span class="file-meta">
           <b>${safeName}</b>
           <span>${sizeLabel}</span>
         </span>
         <span class="file-card-actions">
-          <button type="button" class="small file-action-btn" data-preview-id="${escapeAttr(m.id)}" title="Preview ${safeAttrName}" aria-label="Preview">${iconEye(13)}<span>VIEW</span></button>
-          <a class="btn small file-action-btn" href="${safeUrl}" download="${safeAttrName}" title="Download ${safeAttrName}" aria-label="Save">${iconDownload(13)}<span>SAVE</span></a>
+          <a class="btn small file-action-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer" title="Open ${safeAttrName} in new tab" aria-label="Open">${iconExternalLink(13)}<span>OPEN</span></a>
+          <a class="btn small file-action-btn" href="${safeUrl}" download="${safeAttrName}" title="Save ${safeAttrName}" aria-label="Save">${iconDownload(13)}<span>SAVE</span></a>
         </span>
       </div>
     `;

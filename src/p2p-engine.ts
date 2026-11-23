@@ -12,6 +12,7 @@ import {
   verifyText,
 } from './crypto';
 import { MessageOutbox } from './outbox';
+import { resolveTextBlobMime } from './media';
 import {
   MAX_MEDIA_BYTES,
   MAX_MESSAGE_TEXT_LENGTH,
@@ -136,6 +137,7 @@ export class P2PEngine {
   private localCallStream: MediaStream | null = null;
   private localHasVideo = false;
   private localAudioMuted = false;
+  private localOutputMuted = false;
   private isScreenShare = false;
   private cameraFacingMode: 'user' | 'environment' = 'user';
   private hasMultipleCameras = false;
@@ -221,6 +223,10 @@ export class P2PEngine {
     if (oldNick !== profile.nickname) {
       const safeNick = sanitizeString(profile.nickname, MAX_NICKNAME_LENGTH, 'peer').trim();
       if (!safeNick) return;
+      this.profile.nickname = safeNick;
+      if (oldNick !== safeNick) {
+        this.callbacks.onSystemLog(`${oldNick} is now known as ${safeNick}`);
+      }
       void this.signDataString(`NICK:${this.myPeerId}:${safeNick}`).then((sig) => {
         if (this.destroyed) return;
         const packet = this.createBasePacket('NICK_CHANGE', { nickname: safeNick });
@@ -449,7 +455,7 @@ export class P2PEngine {
           if (this.localCallStream) {
             void room.addStream(this.localCallStream, {
               target: transportPeerId,
-              metadata: { hasVideo: this.localHasVideo, isScreenShare: this.isScreenShare },
+              metadata: this.streamMetadata(),
             }).catch(() => {});
           }
         }),
@@ -483,6 +489,14 @@ export class P2PEngine {
               ? metaObj.hasVideo
               : stream.getVideoTracks().some((t) => t.readyState === 'live');
           const isScreenShare = Boolean(metaObj?.isScreenShare);
+          const audioMuted =
+            typeof metaObj?.audioMuted === 'boolean'
+              ? metaObj.audioMuted
+              : Boolean(peerInfo?.audioMuted);
+          const deafened =
+            typeof metaObj?.deafened === 'boolean'
+              ? metaObj.deafened
+              : Boolean(peerInfo?.deafened);
           const nickname = peerInfo?.nickname || logicalId.slice(-6);
 
           const entry: RemoteCallStream = {
@@ -491,12 +505,16 @@ export class P2PEngine {
             stream,
             hasVideo,
             isScreenShare,
+            audioMuted,
+            deafened,
           };
           this.remoteStreams.set(logicalId, entry);
           if (peerInfo) {
             peerInfo.inCall = true;
             peerInfo.hasVideo = hasVideo;
             peerInfo.isScreenShare = isScreenShare;
+            peerInfo.audioMuted = audioMuted;
+            peerInfo.deafened = deafened;
             this.emitPeersChange();
           }
           this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
@@ -518,6 +536,8 @@ export class P2PEngine {
                 curPeer.inCall = false;
                 curPeer.hasVideo = false;
                 curPeer.isScreenShare = false;
+                curPeer.audioMuted = false;
+                curPeer.deafened = false;
                 this.emitPeersChange();
               }
               this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
@@ -678,14 +698,40 @@ export class P2PEngine {
     return false;
   }
 
+  private streamMetadata() {
+    return {
+      hasVideo: this.localHasVideo,
+      isScreenShare: this.isScreenShare,
+      audioMuted: this.localAudioMuted,
+      deafened: this.localOutputMuted,
+    };
+  }
+
+  private callStatePayload() {
+    return {
+      inCall: Boolean(this.localCallStream),
+      ...this.streamMetadata(),
+    };
+  }
+
+  private broadcastCallState(): void {
+    this.sendPacketAll('CALL_STATE', this.callStatePayload());
+  }
+
+  public setCallOutputMuted(muted: boolean): void {
+    if (this.localOutputMuted === muted) return;
+    this.localOutputMuted = muted;
+    if (this.localCallStream) {
+      this.broadcastCallState();
+    }
+  }
+
   private helloPayload() {
     return {
       nickname: this.profile.nickname,
       signPubKey: this.identity?.signPubB64,
       ecdhPubKey: this.identity?.ecdhPubB64,
-      inCall: Boolean(this.localCallStream),
-      hasVideo: this.localHasVideo,
-      isScreenShare: this.isScreenShare,
+      ...this.callStatePayload(),
     };
   }
 
@@ -838,6 +884,11 @@ export class P2PEngine {
       case 'MEDIA_CANCEL': {
         const transferId = sanitizeId(packet.payload?.transferId);
         if (!transferId) break;
+        const uploadAbort = this.activeUploadAborts.get(transferId);
+        if (uploadAbort) {
+          uploadAbort.abort();
+          this.activeUploadAborts.delete(transferId);
+        }
         this.seenTransfers.add(transferId);
         this.callbacks.onMediaCanceled(transferId);
         break;
@@ -848,10 +899,14 @@ export class P2PEngine {
         const inCall = Boolean(packet.payload?.inCall);
         const hasVideo = Boolean(packet.payload?.hasVideo);
         const isScreenShare = Boolean(packet.payload?.isScreenShare);
+        const audioMuted = Boolean(packet.payload?.audioMuted);
+        const deafened = Boolean(packet.payload?.deafened);
         if (peer) {
           peer.inCall = inCall;
           peer.hasVideo = hasVideo;
           peer.isScreenShare = isScreenShare;
+          peer.audioMuted = inCall ? audioMuted : false;
+          peer.deafened = inCall ? deafened : false;
           this.emitPeersChange();
         }
         const curStream = this.remoteStreams.get(packet.senderId);
@@ -863,6 +918,8 @@ export class P2PEngine {
         } else if (inCall && curStream) {
           curStream.hasVideo = hasVideo;
           curStream.isScreenShare = isScreenShare;
+          curStream.audioMuted = audioMuted;
+          curStream.deafened = deafened;
           this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
         }
         break;
@@ -963,14 +1020,11 @@ export class P2PEngine {
     const ecdhPubKey = typeof helloData?.ecdhPubKey === 'string' ? helloData.ecdhPubKey : undefined;
 
     const existing = this.peers.get(peerId);
-    let streamNickChanged = false;
+    let streamStateChanged = false;
+    let peerNick = '';
     if (existing) {
       existing.nickname = safeNick || existing.nickname;
-      const rs = this.remoteStreams.get(peerId);
-      if (rs && rs.nickname !== existing.nickname) {
-        rs.nickname = existing.nickname;
-        streamNickChanged = true;
-      }
+      peerNick = existing.nickname;
       existing.lastSeenAt = now;
       if (transport === 'trystero-mesh') {
         existing.transport = transport;
@@ -988,12 +1042,15 @@ export class P2PEngine {
       if (typeof helloData?.inCall === 'boolean') existing.inCall = helloData.inCall;
       if (typeof helloData?.hasVideo === 'boolean') existing.hasVideo = helloData.hasVideo;
       if (typeof helloData?.isScreenShare === 'boolean') existing.isScreenShare = helloData.isScreenShare;
+      if (typeof helloData?.audioMuted === 'boolean') existing.audioMuted = helloData.audioMuted;
+      if (typeof helloData?.deafened === 'boolean') existing.deafened = helloData.deafened;
     } else {
       if (ecdhPubKey && this.identity && !this.pairwiseKeys.has(peerId)) {
         const derived = await derivePairwiseAesKey(this.identity.ecdhKeyPair.privateKey, ecdhPubKey);
         if (derived) this.pairwiseKeys.set(peerId, derived);
       }
       const initialNick = safeNick || peerId.slice(-6);
+      peerNick = initialNick;
       this.peers.set(peerId, {
         peerId,
         nickname: initialNick,
@@ -1004,15 +1061,27 @@ export class P2PEngine {
         inCall: Boolean(helloData?.inCall),
         hasVideo: Boolean(helloData?.hasVideo),
         isScreenShare: Boolean(helloData?.isScreenShare),
+        audioMuted: Boolean(helloData?.audioMuted),
+        deafened: Boolean(helloData?.deafened),
         lastSeenAt: now,
       });
-      const rs = this.remoteStreams.get(peerId);
-      if (rs && rs.nickname !== initialNick) {
-        rs.nickname = initialNick;
-        streamNickChanged = true;
+    }
+    const rs = this.remoteStreams.get(peerId);
+    if (rs) {
+      if (rs.nickname !== peerNick) {
+        rs.nickname = peerNick;
+        streamStateChanged = true;
+      }
+      if (typeof helloData?.audioMuted === 'boolean' && rs.audioMuted !== helloData.audioMuted) {
+        rs.audioMuted = helloData.audioMuted;
+        streamStateChanged = true;
+      }
+      if (typeof helloData?.deafened === 'boolean' && rs.deafened !== helloData.deafened) {
+        rs.deafened = helloData.deafened;
+        streamStateChanged = true;
       }
     }
-    if (streamNickChanged) {
+    if (streamStateChanged) {
       this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
     }
     this.emitPeersChange();
@@ -1235,8 +1304,9 @@ export class P2PEngine {
     }
 
     const exactBuf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    const blob = new Blob([exactBuf as ArrayBuffer], { type: meta.mimeType });
-    this.callbacks.onMediaReceived(meta.transferId, blob, meta.mimeType);
+    const resolvedMime = resolveTextBlobMime(bytes, meta.mimeType, meta.name);
+    const blob = new Blob([exactBuf as ArrayBuffer], { type: resolvedMime });
+    this.callbacks.onMediaReceived(meta.transferId, blob, resolvedMime);
 
     const ack = this.createBasePacket('CHAT_ACK', {
       messageId: meta.transferId,
@@ -1476,6 +1546,7 @@ export class P2PEngine {
     this.micAudioTrack = stream.getAudioTracks()[0] || null;
     this.localHasVideo = options.video;
     this.localAudioMuted = false;
+    this.localOutputMuted = false;
     this.isScreenShare = false;
 
     for (const track of stream.getTracks()) {
@@ -1490,14 +1561,10 @@ export class P2PEngine {
 
     if (this.room) {
       await this.room.addStream(stream, {
-        metadata: { hasVideo: options.video, isScreenShare: false },
+        metadata: this.streamMetadata(),
       });
     }
-    this.sendPacketAll('CALL_STATE', {
-      inCall: true,
-      hasVideo: options.video,
-      isScreenShare: false,
-    });
+    this.broadcastCallState();
     this.callbacks.onLocalStreamUpdated(stream, this.localHasVideo, this.localAudioMuted, false);
   }
 
@@ -1511,6 +1578,7 @@ export class P2PEngine {
         t.enabled = !this.localAudioMuted;
       }
     }
+    this.broadcastCallState();
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
       this.localHasVideo,
@@ -1530,10 +1598,10 @@ export class P2PEngine {
       this.localHasVideo = false;
       if (this.room) {
         await this.room.addStream(this.localCallStream, {
-          metadata: { hasVideo: false, isScreenShare: false },
+          metadata: this.streamMetadata(),
         });
       }
-      this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: false, isScreenShare: false });
+      this.broadcastCallState();
       this.callbacks.onLocalStreamUpdated(
         this.localCallStream,
         false,
@@ -1574,15 +1642,11 @@ export class P2PEngine {
     this.isScreenShare = false;
     if (this.room) {
       await this.room.addStream(this.localCallStream, {
-        metadata: { hasVideo: true, isScreenShare: false },
+        metadata: this.streamMetadata(),
       });
     }
 
-    this.sendPacketAll('CALL_STATE', {
-      inCall: true,
-      hasVideo: this.localHasVideo,
-      isScreenShare: false,
-    });
+    this.broadcastCallState();
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
       this.localHasVideo,
@@ -1647,7 +1711,7 @@ export class P2PEngine {
           await this.room.replaceTrack(prevTrack, nextTrack);
         } catch {
           await this.room.addStream(this.localCallStream, {
-            metadata: { hasVideo: true, isScreenShare: false },
+            metadata: this.streamMetadata(),
           });
         }
       }
@@ -1784,10 +1848,10 @@ export class P2PEngine {
       this.localCallStream.addTrack(dispTrack);
       if (this.room) {
         await this.room.addStream(this.localCallStream, {
-          metadata: { hasVideo: true, isScreenShare: true },
+          metadata: this.streamMetadata(),
         });
       }
-      this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: true, isScreenShare: true });
+      this.broadcastCallState();
       this.callbacks.onLocalStreamUpdated(
         this.localCallStream,
         true,
@@ -1822,10 +1886,10 @@ export class P2PEngine {
     this.localHasVideo = false;
     if (this.room) {
       await this.room.addStream(this.localCallStream, {
-        metadata: { hasVideo: false, isScreenShare: false },
+        metadata: this.streamMetadata(),
       });
     }
-    this.sendPacketAll('CALL_STATE', { inCall: true, hasVideo: false, isScreenShare: false });
+    this.broadcastCallState();
     this.callbacks.onLocalStreamUpdated(
       this.localCallStream,
       false,
@@ -1849,6 +1913,7 @@ export class P2PEngine {
     this.localCallStream = null;
     this.localHasVideo = false;
     this.localAudioMuted = false;
+    this.localOutputMuted = false;
     this.isScreenShare = false;
 
     if (this.room) {
@@ -1866,7 +1931,7 @@ export class P2PEngine {
       }
     }
     void this.releaseWakeLock();
-    this.sendPacketAll('CALL_STATE', { inCall: false, hasVideo: false, isScreenShare: false });
+    this.broadcastCallState();
     this.callbacks.onLocalStreamUpdated(null, false, false, false);
   }
 
