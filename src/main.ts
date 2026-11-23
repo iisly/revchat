@@ -1196,6 +1196,7 @@ class RevChatApp {
         isScreenShare: this.isScreenShare,
         canSwitchCamera: this.engine?.canSwitchCamera() ?? false,
         remoteStreams: this.remoteCallStreams,
+        peers: this.peers,
         peersInCall,
         myNickname: this.profile.nickname,
       },

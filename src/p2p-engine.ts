@@ -163,7 +163,7 @@ export class P2PEngine {
     initialRoomId: string,
     callbacks: P2PEngineCallbacks
   ) {
-    this.profile = profile;
+    this.profile = { ...profile };
     this.roomId = normalizeRoomId(initialRoomId);
     this.callbacks = callbacks;
     this.myPeerId = `${PEER_PREFIX}${sanitizeId(profile.clientId).toLowerCase()}`;
@@ -217,7 +217,7 @@ export class P2PEngine {
 
   public updateProfile(profile: UserProfile): void {
     const oldNick = this.profile.nickname;
-    this.profile = profile;
+    this.profile = { ...profile };
     if (oldNick !== profile.nickname) {
       const safeNick = sanitizeString(profile.nickname, MAX_NICKNAME_LENGTH, 'peer').trim();
       if (!safeNick) return;
@@ -333,6 +333,22 @@ export class P2PEngine {
     }
     this.transportToLogical.set(transportPeerId, logicalId);
     this.logicalToTransport.set(logicalId, transportPeerId);
+    if (transportPeerId !== logicalId) {
+      const earlyStream = this.remoteStreams.get(transportPeerId);
+      if (earlyStream) {
+        this.remoteStreams.delete(transportPeerId);
+        const peerNick = this.peers.get(logicalId)?.nickname;
+        earlyStream.peerId = logicalId;
+        if (peerNick) earlyStream.nickname = peerNick;
+        this.remoteStreams.set(logicalId, earlyStream);
+        const earlyCleanup = this.remoteStreamCleanups.get(transportPeerId);
+        if (earlyCleanup) {
+          this.remoteStreamCleanups.delete(transportPeerId);
+          this.remoteStreamCleanups.set(logicalId, earlyCleanup);
+        }
+        this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
+      }
+    }
     return true;
   }
 
@@ -489,22 +505,24 @@ export class P2PEngine {
           const boundTracks = new Set<MediaStreamTrack>();
 
           const syncTrackState = () => {
-            if (this.remoteStreams.get(logicalId)?.stream !== stream) return;
+            const currentId = this.transportToLogical.get(ctx.peerId) || logicalId;
+            if (this.remoteStreams.get(currentId)?.stream !== stream) return;
+            const curPeer = this.peers.get(currentId);
             const tracks = stream.getTracks();
             const active = tracks.length > 0 && tracks.some((t) => t.readyState === 'live');
             if (!active) {
-              this.remoteStreamCleanups.get(logicalId)?.();
-              this.remoteStreamCleanups.delete(logicalId);
-              this.remoteStreams.delete(logicalId);
-              if (peerInfo) {
-                peerInfo.inCall = false;
-                peerInfo.hasVideo = false;
-                peerInfo.isScreenShare = false;
+              this.remoteStreamCleanups.get(currentId)?.();
+              this.remoteStreamCleanups.delete(currentId);
+              this.remoteStreams.delete(currentId);
+              if (curPeer) {
+                curPeer.inCall = false;
+                curPeer.hasVideo = false;
+                curPeer.isScreenShare = false;
                 this.emitPeersChange();
               }
               this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
             } else {
-              const cur = this.remoteStreams.get(logicalId);
+              const cur = this.remoteStreams.get(currentId);
               if (cur) {
                 cur.hasVideo = stream.getVideoTracks().some((t) => t.readyState === 'live');
                 if (!cur.hasVideo) cur.isScreenShare = false;
@@ -943,8 +961,14 @@ export class P2PEngine {
     const ecdhPubKey = typeof helloData?.ecdhPubKey === 'string' ? helloData.ecdhPubKey : undefined;
 
     const existing = this.peers.get(peerId);
+    let streamNickChanged = false;
     if (existing) {
       existing.nickname = safeNick || existing.nickname;
+      const rs = this.remoteStreams.get(peerId);
+      if (rs && rs.nickname !== existing.nickname) {
+        rs.nickname = existing.nickname;
+        streamNickChanged = true;
+      }
       existing.lastSeenAt = now;
       if (transport === 'trystero-mesh') {
         existing.transport = transport;
@@ -967,9 +991,10 @@ export class P2PEngine {
         const derived = await derivePairwiseAesKey(this.identity.ecdhKeyPair.privateKey, ecdhPubKey);
         if (derived) this.pairwiseKeys.set(peerId, derived);
       }
+      const initialNick = safeNick || peerId.slice(-6);
       this.peers.set(peerId, {
         peerId,
-        nickname: safeNick || peerId.slice(-6),
+        nickname: initialNick,
         transport,
         rttMs: transport === 'local-broadcast' ? 1 : null,
         signPubKey,
@@ -979,6 +1004,14 @@ export class P2PEngine {
         isScreenShare: Boolean(helloData?.isScreenShare),
         lastSeenAt: now,
       });
+      const rs = this.remoteStreams.get(peerId);
+      if (rs && rs.nickname !== initialNick) {
+        rs.nickname = initialNick;
+        streamNickChanged = true;
+      }
+    }
+    if (streamNickChanged) {
+      this.callbacks.onCallStreamsChange(Array.from(this.remoteStreams.values()));
     }
     this.emitPeersChange();
   }
@@ -1411,6 +1444,15 @@ export class P2PEngine {
     }
   }
 
+  private buildCameraVideoConstraints(base: MediaTrackConstraints): MediaTrackConstraints {
+    return {
+      ...base,
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
+    };
+  }
+
   public async startCall(options: { video: boolean }): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Microphone / camera access requires HTTPS or localhost.');
@@ -1421,7 +1463,9 @@ export class P2PEngine {
 
     const constraints: MediaStreamConstraints = {
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: options.video ? { facingMode: this.cameraFacingMode } : false,
+      video: options.video
+        ? this.buildCameraVideoConstraints({ facingMode: this.cameraFacingMode })
+        : false,
     };
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -1498,7 +1542,7 @@ export class P2PEngine {
     }
 
     const camStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: this.cameraFacingMode },
+      video: this.buildCameraVideoConstraints({ facingMode: this.cameraFacingMode }),
     });
     await this.detectMultipleCameras();
     const newTrack = camStream.getVideoTracks()[0];
@@ -1567,7 +1611,7 @@ export class P2PEngine {
     const tryAcquireNext = async (): Promise<MediaStream | null> => {
       try {
         return await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: nextFacing } },
+          video: this.buildCameraVideoConstraints({ facingMode: { exact: nextFacing } }),
         });
       } catch {
         // Fallback to enumerateDevices when exact facingMode is unavailable
@@ -1584,7 +1628,7 @@ export class P2PEngine {
               : /(front|user|selfie|face|전면)/i;
           const preferred = others.find((d) => wantRegex.test(d.label || '')) || others[0];
           return await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { exact: preferred.deviceId } },
+            video: this.buildCameraVideoConstraints({ deviceId: { exact: preferred.deviceId } }),
           });
         }
       } catch {
@@ -1622,9 +1666,9 @@ export class P2PEngine {
       if (this.localCallStream) {
         try {
           const rec = await navigator.mediaDevices.getUserMedia({
-            video: oldDeviceId
-              ? { deviceId: { exact: oldDeviceId } }
-              : { facingMode: currentFacing },
+            video: this.buildCameraVideoConstraints(
+              oldDeviceId ? { deviceId: { exact: oldDeviceId } } : { facingMode: currentFacing }
+            ),
           });
           const recTrack = rec.getVideoTracks()[0];
           if (recTrack) {
