@@ -342,7 +342,7 @@ class RevChatApp {
     const themeBtn = this.root.querySelector('#btn-theme');
     if (!themeBtn) return;
     const isDark = this.profile.theme === 'dark';
-    themeBtn.innerHTML = isDark ? iconSun(15) : iconMoon(15);
+    themeBtn.innerHTML = isDark ? iconSun(18) : iconMoon(18);
     const label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
     themeBtn.setAttribute('title', label);
     themeBtn.setAttribute('aria-label', label);
@@ -644,7 +644,7 @@ class RevChatApp {
     this.notifications.updateContext(this.roomId, this.profile.soundMuted);
     const btn = this.root.querySelector('#btn-mute-sound');
     if (btn) {
-      btn.innerHTML = this.profile.soundMuted ? iconVolumeOff(15) : iconVolumeOn(15);
+      btn.innerHTML = this.profile.soundMuted ? iconVolumeOff(18) : iconVolumeOn(18);
       btn.classList.toggle('muted', this.profile.soundMuted);
       const label = this.profile.soundMuted
         ? 'Unmute notification sound'
@@ -908,7 +908,7 @@ class RevChatApp {
         <aside class="sidebar ${this.mobileDrawerOpen ? 'open' : ''}" id="sidebar">
           <div class="sidebar-header">
             <a href="./" class="brand" id="brand-logo" title="Reload revchat">
-              <img src="./favicon.svg" class="brand-logo" width="22" height="22" alt="" />
+              <img src="./favicon.svg" class="brand-logo" width="26" height="26" alt="" />
               <span class="brand-name">revchat</span>
             </a>
             <div class="sidebar-header-right">
@@ -916,7 +916,7 @@ class RevChatApp {
                 <span class="status-dot ${this.signalingState.status}" id="sig-dot"></span>
                 <span id="sig-label">${this.getSignalingBadgeText()}</span>
               </span>
-              <button type="button" class="small icon-btn mobile-only" id="btn-close-drawer" title="Close menu" aria-label="Close menu">${iconClose(15)}</button>
+              <button type="button" class="small icon-btn mobile-only" id="btn-close-drawer" title="Close menu" aria-label="Close menu">${iconClose(18)}</button>
             </div>
           </div>
 
@@ -970,8 +970,8 @@ class RevChatApp {
                 id="btn-theme"
                 title="${this.profile.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}"
                 aria-label="${this.profile.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}"
-              >${this.profile.theme === 'dark' ? iconSun(15) : iconMoon(15)}</button>
-              <button type="button" class="small icon-btn" id="btn-help" title="Guide & Commands" aria-label="Guide & Commands">${iconHelp(15)}</button>
+              >${this.profile.theme === 'dark' ? iconSun(18) : iconMoon(18)}</button>
+              <button type="button" class="small icon-btn" id="btn-help" title="Guide & Commands" aria-label="Guide & Commands">${iconHelp(18)}</button>
             </div>
           </div>
         </aside>
@@ -980,26 +980,26 @@ class RevChatApp {
         <main class="chat-pane" id="chat-pane">
           <header class="chat-topbar">
             <div class="topbar-left">
-              <button type="button" class="small icon-btn mobile-only" id="btn-open-drawer" title="Open menu" aria-label="Open menu">${iconMenu(15)}</button>
+              <button type="button" class="small icon-btn mobile-only" id="btn-open-drawer" title="Open menu" aria-label="Open menu">${iconMenu(18)}</button>
               <span class="room-badge" id="topbar-room-title">#${escapeHtml(this.roomId)}</span>
               <span class="badge ${this.peers.length > 0 ? 'ok' : ''}" id="topbar-peer-badge">${this.peers.length} online</span>
             </div>
             <div class="topbar-actions">
-              <button type="button" class="small primary icon-btn" id="btn-topbar-invite" title="Invite to room" aria-label="Invite to room">${iconShare(15)}</button>
+              <button type="button" class="small primary icon-btn" id="btn-topbar-invite" title="Invite to room" aria-label="Invite to room">${iconShare(18)}</button>
               <button
                 type="button"
                 class="small icon-btn ${this.profile.soundMuted ? 'muted' : ''}"
                 id="btn-mute-sound"
                 title="${this.profile.soundMuted ? 'Unmute notification sound' : 'Mute notification sound'}"
                 aria-label="${this.profile.soundMuted ? 'Unmute notification sound' : 'Mute notification sound'}"
-              >${this.profile.soundMuted ? iconVolumeOff(15) : iconVolumeOn(15)}</button>
+              >${this.profile.soundMuted ? iconVolumeOff(18) : iconVolumeOn(18)}</button>
               <button
                 type="button"
                 class="small icon-btn ${this.searchOpen ? 'active' : ''}"
                 id="btn-toggle-search"
                 title="Search messages"
                 aria-label="Search messages"
-              >${iconSearch(15)}</button>
+              >${iconSearch(18)}</button>
             </div>
           </header>
 
@@ -1014,7 +1014,7 @@ class RevChatApp {
             Drop files here to attach (up to 25 MB)
           </div>
 
-          <button type="button" class="jump-bottom-btn" id="btn-jump-bottom" title="Jump to latest" aria-label="Jump to latest" style="display:none;">${iconArrowDown(16)}</button>
+          <button type="button" class="jump-bottom-btn" id="btn-jump-bottom" title="Jump to latest" aria-label="Jump to latest" style="display:none;">${iconArrowDown(18)}</button>
 
           <div id="slash-menu-container"></div>
           <div id="mention-menu-container"></div>
@@ -1047,7 +1047,7 @@ class RevChatApp {
     return `
       <div class="search-bar">
         <input type="search" id="input-search" value="${escapeAttr(this.searchQuery)}" placeholder="Search messages or filenames..." />
-        <button type="button" class="small icon-btn" id="btn-close-search" title="Close search" aria-label="Close search">${iconClose(14)}</button>
+        <button type="button" class="small icon-btn" id="btn-close-search" title="Close search" aria-label="Close search">${iconClose(18)}</button>
       </div>
     `;
   }
@@ -1315,7 +1315,7 @@ class RevChatApp {
     if (!this.isAtBottom && this.unreadWhileScrolled > 0) {
       btn.style.display = 'inline-flex';
       btn.classList.add('has-unread');
-      btn.innerHTML = `${iconArrowDown(15)}<span class="jump-unread-count">${this.unreadWhileScrolled}</span>`;
+      btn.innerHTML = `${iconArrowDown(16)}<span class="jump-unread-count">${this.unreadWhileScrolled}</span>`;
       btn.setAttribute(
         'aria-label',
         `Jump to ${this.unreadWhileScrolled} new message${this.unreadWhileScrolled > 1 ? 's' : ''}`
@@ -1323,7 +1323,7 @@ class RevChatApp {
     } else if (!this.isAtBottom) {
       btn.style.display = 'inline-flex';
       btn.classList.remove('has-unread');
-      btn.innerHTML = iconArrowDown(16);
+      btn.innerHTML = iconArrowDown(18);
       btn.setAttribute('aria-label', 'Jump to latest');
     } else {
       btn.style.display = 'none';

@@ -420,13 +420,13 @@ export class CallDockController {
     slot.querySelectorAll('[data-fullscreen-tile]').forEach((btn) => {
       btn.setAttribute('title', label);
       btn.setAttribute('aria-label', label);
-      btn.innerHTML = isFs ? iconMinimize(14) : iconMaximize(14);
+      btn.innerHTML = isFs ? iconMinimize(16) : iconMaximize(16);
     });
     const barBtn = slot.querySelector('#btn-call-fullscreen');
     if (barBtn) {
       barBtn.setAttribute('title', label);
       barBtn.setAttribute('aria-label', label);
-      barBtn.innerHTML = isFs ? iconMinimize(15) : iconMaximize(15);
+      barBtn.innerHTML = isFs ? iconMinimize(16) : iconMaximize(16);
     }
   }
 
@@ -609,7 +609,7 @@ export class CallDockController {
       const label = state.localMuted ? 'Unmute mic' : 'Mute mic';
       muteBtn.setAttribute('title', label);
       muteBtn.setAttribute('aria-label', label);
-      muteBtn.innerHTML = state.localMuted ? iconMicOff(15) : iconMic(15);
+      muteBtn.innerHTML = state.localMuted ? iconMicOff(16) : iconMic(16);
     }
 
     const speakerMuted = this.isAudioOutputMuted();
@@ -620,7 +620,7 @@ export class CallDockController {
       const label = speakerMuted ? 'Unmute call audio' : 'Mute call audio';
       speakerBtn.setAttribute('title', label);
       speakerBtn.setAttribute('aria-label', label);
-      speakerBtn.innerHTML = speakerMuted ? iconVolumeOff(15) : iconVolumeOn(15);
+      speakerBtn.innerHTML = speakerMuted ? iconVolumeOff(16) : iconVolumeOn(16);
     }
 
     const slider = slot.querySelector('#call-volume-slider') as HTMLInputElement | null;
@@ -689,14 +689,14 @@ export class CallDockController {
             data-focus-tile="${safeId}"
             title="${isFocused ? 'Exit theater mode (ESC)' : 'Theater mode'}"
             aria-label="${isFocused ? 'Exit theater mode' : 'Theater mode'}"
-          >${isFocused ? iconClose(14) : iconExpand(14)}</button>
+          >${isFocused ? iconClose(16) : iconExpand(16)}</button>
           <button
             type="button"
             class="tile-tool-btn"
             data-fullscreen-tile="${safeId}"
             title="${fsLabel}"
             aria-label="${fsLabel}"
-          >${isFs ? iconMinimize(14) : iconMaximize(14)}</button>
+          >${isFs ? iconMinimize(16) : iconMaximize(16)}</button>
         </div>
       `;
     return `
@@ -933,7 +933,7 @@ export class CallDockController {
         title="${speakerLabel}"
         aria-label="${speakerLabel}"
         aria-pressed="${speakerMuted}"
-      >${speakerMuted ? iconVolumeOff(15) : iconVolumeOn(15)}</button>
+      >${speakerMuted ? iconVolumeOff(16) : iconVolumeOn(16)}</button>
     `;
 
     const audioOutputGroupHtml = this.supportsAudioVolume
@@ -975,7 +975,7 @@ export class CallDockController {
               title="${micLabel}"
               aria-label="${micLabel}"
               aria-pressed="${localMuted}"
-            >${localMuted ? iconMicOff(15) : iconMic(15)}</button>
+            >${localMuted ? iconMicOff(16) : iconMic(16)}</button>
             ${audioOutputGroupHtml}
             <button
               type="button"
@@ -984,26 +984,26 @@ export class CallDockController {
               title="${camLabel}"
               aria-label="${camLabel}"
               aria-pressed="${camActive}"
-            >${camActive ? iconVideo(15) : iconVideoOff(15)}</button>
+            >${camActive ? iconVideo(16) : iconVideoOff(16)}</button>
             ${
               canFlipCam
-                ? `<button type="button" class="call-ctrl-btn" id="btn-call-flip" title="Switch camera" aria-label="Switch camera">${iconRefresh(15)}</button>`
+                ? `<button type="button" class="call-ctrl-btn" id="btn-call-flip" title="Switch camera" aria-label="Switch camera">${iconRefresh(16)}</button>`
                 : ''
             }
             ${
               canScreen
-                ? `<button type="button" class="call-ctrl-btn ${isScreenShare ? 'active' : ''}" id="btn-call-screen" title="${screenLabel}" aria-label="${screenLabel}" aria-pressed="${isScreenShare}">${iconMonitor(15)}</button>`
+                ? `<button type="button" class="call-ctrl-btn ${isScreenShare ? 'active' : ''}" id="btn-call-screen" title="${screenLabel}" aria-label="${screenLabel}" aria-pressed="${isScreenShare}">${iconMonitor(16)}</button>`
                 : ''
             }
             ${
               isTheater
                 ? `
-              <button type="button" class="call-ctrl-btn" id="btn-call-fullscreen" title="${fsLabel}" aria-label="${fsLabel}">${isFs ? iconMinimize(15) : iconMaximize(15)}</button>
-              <button type="button" class="call-ctrl-btn" id="btn-call-exit-theater" title="Exit theater mode" aria-label="Exit theater mode">${iconClose(15)}</button>
+              <button type="button" class="call-ctrl-btn" id="btn-call-fullscreen" title="${fsLabel}" aria-label="${fsLabel}">${isFs ? iconMinimize(16) : iconMaximize(16)}</button>
+              <button type="button" class="call-ctrl-btn" id="btn-call-exit-theater" title="Exit theater mode" aria-label="Exit theater mode">${iconClose(16)}</button>
             `
                 : hasAnyVideo
                 ? `<button type="button" class="call-ctrl-btn" id="btn-call-collapse" title="${collapseLabel}" aria-label="${collapseLabel}" aria-pressed="${this.stageCollapsed}">${
-                    this.stageCollapsed ? iconEye(15) : iconEyeOff(15)
+                    this.stageCollapsed ? iconEye(16) : iconEyeOff(16)
                   }</button>`
                 : ''
             }
@@ -1013,7 +1013,7 @@ export class CallDockController {
               id="btn-call-leave"
               title="Leave call"
               aria-label="Leave call"
-            >${iconPhoneOff(15)}</button>
+            >${iconPhoneOff(16)}</button>
           </div>
         </div>
       </div>

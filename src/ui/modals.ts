@@ -43,7 +43,7 @@ export function renderModalDOM(
         <div class="modal" role="dialog" aria-modal="true" aria-label="Invite to room">
           <div class="modal-header">
             <span>INVITE TO #${escapeHtml(ctx.roomId)}</span>
-            <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(14)}</button>
+            <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(16)}</button>
           </div>
           <div class="modal-body">
             <div class="qr-box">${ctx.inviteQrSvg}</div>
@@ -97,7 +97,7 @@ export function renderModalDOM(
             <span>${safeName}</span>
             <div class="tool-group">
               <a class="btn small" href="${safeUrl}" download="${escapeAttr(ctx.lightboxName || 'image')}" title="Save ${escapeAttr(ctx.lightboxName || 'image')}">${iconDownload(13)}<span>SAVE</span></a>
-              <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(14)}</button>
+              <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(16)}</button>
             </div>
           </div>
           <div class="lightbox-body">
@@ -115,8 +115,8 @@ export function renderModalDOM(
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal help-modal" role="dialog" aria-modal="true" aria-label="Guide & Commands">
         <div class="modal-header">
-          <span class="modal-brand-title"><img src="./favicon.svg" class="brand-logo" width="18" height="18" alt="" /><span>Guide & Commands</span></span>
-          <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(14)}</button>
+          <span class="modal-brand-title"><img src="./favicon.svg" class="brand-logo" width="20" height="20" alt="" /><span>Guide & Commands</span></span>
+          <button type="button" class="small icon-btn" id="btn-modal-close" title="Close" aria-label="Close">${iconClose(16)}</button>
         </div>
         <div class="modal-body help-modal-body">
           <pre class="ascii-banner">

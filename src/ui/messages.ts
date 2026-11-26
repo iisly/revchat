@@ -247,10 +247,10 @@ export function renderSingleMessageHtml(
     ? ''
     : `
       <span class="msg-actions">
-        <button type="button" class="msg-action-link" data-react-open="${escapeAttr(m.id)}" title="React" aria-label="React">${iconSmilePlus(14)}</button>
+        <button type="button" class="msg-action-link" data-react-open="${escapeAttr(m.id)}" title="React" aria-label="React">${iconSmilePlus(16)}</button>
         ${
           m.text
-            ? `<button type="button" class="msg-action-link" data-copy-id="${escapeAttr(m.id)}" title="Copy" aria-label="Copy">${iconCopy(14)}</button>`
+            ? `<button type="button" class="msg-action-link" data-copy-id="${escapeAttr(m.id)}" title="Copy" aria-label="Copy">${iconCopy(16)}</button>`
             : ''
         }
         <button
@@ -261,10 +261,10 @@ export function renderSingleMessageHtml(
           data-reply-text="${escapeAttr((m.text || m.attachment?.name || 'attachment').slice(0, 80))}"
           title="Reply"
           aria-label="Reply"
-        >${iconReply(14)}</button>
+        >${iconReply(16)}</button>
         ${
           isSelf
-            ? `<button type="button" class="msg-action-link danger-link" data-delete-id="${escapeAttr(m.id)}" title="Delete" aria-label="Delete">${iconTrash(14)}</button>`
+            ? `<button type="button" class="msg-action-link danger-link" data-delete-id="${escapeAttr(m.id)}" title="Delete" aria-label="Delete">${iconTrash(16)}</button>`
             : ''
         }
       </span>
